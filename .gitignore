@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Auth data (sensitive!)
+storage-state.json
+cookies.json
+
+# Environment variables
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
