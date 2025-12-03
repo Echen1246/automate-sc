@@ -348,6 +348,13 @@ async function pollLoop(instance: BrowserInstance): Promise<void> {
       
       const unread = conversations.filter((c) => c.hasUnread);
 
+      // Debug: Log what we detected
+      if (unread.length > 0) {
+        logger.debug('Unread chats detected', { 
+          unread: unread.map(c => ({ name: c.name, preview: c.preview.substring(0, 30) }))
+        });
+      }
+
       if (pollCount % 10 === 0) {
         report('heartbeat', { 
           pollCount,

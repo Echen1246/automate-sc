@@ -82,6 +82,9 @@ export async function getConversations(page: Page): Promise<Conversation[]> {
       const hasNewChat = name === 'New Chat' || textLower.includes('new chat');
       const hasNewSnap = textLower.includes('new snap') || textLower.includes('new message');
       
+      // Debug: log the raw text for each conversation
+      console.log(`[CHAT DEBUG] ${name}: "${preview}" | delivered=${hasDelivered} received=${hasReceived} opened=${hasOpened}`);
+      
       // STRICT RULE: If we sent the last message (Delivered/Sent/Opened), DO NOT open
       if (hasDelivered || hasSent || hasOpened) {
         conversations.push({
@@ -174,7 +177,7 @@ export async function scrollConversationList(page: Page): Promise<void> {
 export async function openConversation(page: Page, name: string): Promise<boolean> {
   logger.info('Opening conversation', { name });
 
-  // Method 1: Find element by text content and click
+  // Method 1: Find element by EXACT name match (first line of text)
   try {
     const elements = await page.$$(
       '[role="listbox"] > *, [role="list"] > *, nav li, aside [role="button"], [class*="onversation"], [class*="Friend"]'
@@ -182,8 +185,23 @@ export async function openConversation(page: Page, name: string): Promise<boolea
 
     for (const el of elements) {
       const text = await el.innerText();
-      if (text && text.includes(name)) {
-        logger.debug('Found element, clicking');
+      if (!text) continue;
+      
+      // Get first line (the name) and check for EXACT match
+      const firstLine = text.split('\n')[0]?.trim();
+      if (firstLine === name) {
+        logger.debug('Found EXACT match', { name, firstLine });
+        await el.click();
+        await sleep(2000);
+        return true;
+      }
+    }
+    
+    // Fallback: partial match if no exact match found
+    for (const el of elements) {
+      const text = await el.innerText();
+      if (text && text.startsWith(name)) {
+        logger.debug('Found by startsWith', { name, text: text.substring(0, 50) });
         await el.click();
         await sleep(2000);
         return true;
