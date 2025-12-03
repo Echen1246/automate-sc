@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snapchat Bot Dashboard</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 24px;
+      color: #fff;
+    }
+    
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 20px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      margin-bottom: 24px;
+    }
+    
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #444;
+    }
+    
+    .status-indicator.running { background: #22c55e; }
+    .status-indicator.paused { background: #eab308; }
+    .status-indicator.stopped { background: #ef4444; }
+    
+    .status-text {
+      font-size: 14px;
+      color: #999;
+    }
+    
+    .status-text strong {
+      color: #fff;
+    }
+    
+    .controls {
+      display: flex;
+      gap: 8px;
+      margin-left: auto;
+    }
+    
+    button {
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: 500;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    
+    button:hover { opacity: 0.8; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    
+    .btn-start { background: #22c55e; color: #000; }
+    .btn-pause { background: #eab308; color: #000; }
+    .btn-stop { background: #ef4444; color: #fff; }
+    .btn-save { background: #3b82f6; color: #fff; }
+    
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+    
+    .card {
+      background: #1a1a1a;
+      border-radius: 8px;
+      padding: 20px;
+    }
+    
+    .card h2 {
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #666;
+      margin-bottom: 16px;
+    }
+    
+    .stat {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #2a2a2a;
+    }
+    
+    .stat:last-child { border-bottom: none; }
+    
+    .stat-label { color: #888; }
+    .stat-value { color: #fff; font-weight: 500; }
+    
+    .form-group {
+      margin-bottom: 16px;
+    }
+    
+    .form-group:last-child { margin-bottom: 0; }
+    
+    label {
+      display: block;
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 6px;
+    }
+    
+    input[type="number"],
+    input[type="text"],
+    textarea {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 14px;
+      background: #0a0a0a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #fff;
+    }
+    
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+    
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+      font-family: monospace;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    
+    .row {
+      display: flex;
+      gap: 12px;
+    }
+    
+    .row .form-group { flex: 1; }
+    
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0;
+    }
+    
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+    
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #333;
+      border-radius: 24px;
+      transition: 0.2s;
+    }
+    
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: 0.2s;
+    }
+    
+    .toggle input:checked + .toggle-slider {
+      background: #3b82f6;
+    }
+    
+    .toggle input:checked + .toggle-slider:before {
+      transform: translateX(20px);
+    }
+    
+    .personality-card {
+      grid-column: 1 / -1;
+    }
+    
+    .card-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Snapchat Bot Dashboard</h1>
+    
+    <div class="status-bar">
+      <div class="status-indicator" id="statusIndicator"></div>
+      <div class="status-text">
+        Status: <strong id="statusText">Loading...</strong>
+      </div>
+      <div class="controls">
+        <button class="btn-start" id="btnStart" onclick="startBot()">Start</button>
+        <button class="btn-pause" id="btnPause" onclick="pauseBot()">Pause</button>
+        <button class="btn-stop" id="btnStop" onclick="stopBot()">Stop</button>
+      </div>
+    </div>
+    
+    <div class="grid">
+      <div class="card">
+        <h2>Statistics</h2>
+        <div class="stat">
+          <span class="stat-label">Messages Received</span>
+          <span class="stat-value" id="statReceived">0</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Messages Sent</span>
+          <span class="stat-value" id="statSent">0</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Started At</span>
+          <span class="stat-value" id="statStarted">-</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Last Activity</span>
+          <span class="stat-value" id="statActivity">-</span>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h2>Schedule</h2>
+        <div class="toggle-row">
+          <span>Enable Schedule</span>
+          <label class="toggle">
+            <input type="checkbox" id="scheduleEnabled" onchange="saveSchedule()">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="row">
+          <div class="form-group">
+            <label>Start Hour (0-23)</label>
+            <input type="number" id="scheduleStart" min="0" max="23" value="9">
+          </div>
+          <div class="form-group">
+            <label>End Hour (0-23)</label>
+            <input type="number" id="scheduleEnd" min="0" max="23" value="23">
+          </div>
+        </div>
+        <div class="card-actions">
+          <button class="btn-save" onclick="saveSchedule()">Save Schedule</button>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h2>Frequency (milliseconds)</h2>
+        <div class="row">
+          <div class="form-group">
+            <label>Poll Min</label>
+            <input type="number" id="pollMin" min="1000" value="2000">
+          </div>
+          <div class="form-group">
+            <label>Poll Max</label>
+            <input type="number" id="pollMax" min="1000" value="5000">
+          </div>
+        </div>
+        <div class="row">
+          <div class="form-group">
+            <label>Response Min</label>
+            <input type="number" id="respMin" min="500" value="1500">
+          </div>
+          <div class="form-group">
+            <label>Response Max</label>
+            <input type="number" id="respMax" min="500" value="4000">
+          </div>
+        </div>
+        <div class="card-actions">
+          <button class="btn-save" onclick="saveFrequency()">Save Frequency</button>
+        </div>
+      </div>
+      
+      <div class="card personality-card">
+        <h2>Personality (AI System Prompt)</h2>
+        <div class="form-group">
+          <textarea id="personality" placeholder="Enter the AI system prompt..."></textarea>
+        </div>
+        <div class="card-actions">
+          <button class="btn-save" onclick="savePersonality()">Save Personality</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    const API = '';
+    
+    async function fetchState() {
+      try {
+        const res = await fetch(`${API}/api/state`);
+        const state = await res.json();
+        updateUI(state);
+      } catch (e) {
+        console.error('Failed to fetch state:', e);
+      }
+    }
+    
+    function updateUI(state) {
+      // Status
+      const indicator = document.getElementById('statusIndicator');
+      const statusText = document.getElementById('statusText');
+      
+      if (!state.isRunning) {
+        indicator.className = 'status-indicator stopped';
+        statusText.textContent = 'Stopped';
+      } else if (state.isPaused) {
+        indicator.className = 'status-indicator paused';
+        statusText.textContent = 'Paused';
+      } else {
+        indicator.className = 'status-indicator running';
+        statusText.textContent = 'Running';
+      }
+      
+      // Stats
+      document.getElementById('statReceived').textContent = state.stats.messagesReceived;
+      document.getElementById('statSent').textContent = state.stats.messagesSent;
+      document.getElementById('statStarted').textContent = state.stats.startedAt 
+        ? new Date(state.stats.startedAt).toLocaleString() 
+        : '-';
+      document.getElementById('statActivity').textContent = state.stats.lastActivity 
+        ? new Date(state.stats.lastActivity).toLocaleString() 
+        : '-';
+      
+      // Schedule
+      document.getElementById('scheduleEnabled').checked = state.schedule.enabled;
+      document.getElementById('scheduleStart').value = state.schedule.startHour;
+      document.getElementById('scheduleEnd').value = state.schedule.endHour;
+      
+      // Frequency
+      document.getElementById('pollMin').value = state.frequency.pollIntervalMin;
+      document.getElementById('pollMax').value = state.frequency.pollIntervalMax;
+      document.getElementById('respMin').value = state.frequency.responseDelayMin;
+      document.getElementById('respMax').value = state.frequency.responseDelayMax;
+      
+      // Personality
+      document.getElementById('personality').value = state.personality;
+      
+      // Button states
+      document.getElementById('btnStart').disabled = state.isRunning && !state.isPaused;
+      document.getElementById('btnPause').disabled = !state.isRunning || state.isPaused;
+      document.getElementById('btnStop').disabled = !state.isRunning;
+    }
+    
+    async function startBot() {
+      await fetch(`${API}/api/start`, { method: 'POST' });
+      fetchState();
+    }
+    
+    async function pauseBot() {
+      await fetch(`${API}/api/pause`, { method: 'POST' });
+      fetchState();
+    }
+    
+    async function stopBot() {
+      await fetch(`${API}/api/stop`, { method: 'POST' });
+      fetchState();
+    }
+    
+    async function saveSchedule() {
+      await fetch(`${API}/api/schedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: document.getElementById('scheduleEnabled').checked,
+          startHour: parseInt(document.getElementById('scheduleStart').value),
+          endHour: parseInt(document.getElementById('scheduleEnd').value)
+        })
+      });
+      fetchState();
+    }
+    
+    async function saveFrequency() {
+      await fetch(`${API}/api/frequency`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pollIntervalMin: parseInt(document.getElementById('pollMin').value),
+          pollIntervalMax: parseInt(document.getElementById('pollMax').value),
+          responseDelayMin: parseInt(document.getElementById('respMin').value),
+          responseDelayMax: parseInt(document.getElementById('respMax').value)
+        })
+      });
+      fetchState();
+    }
+    
+    async function savePersonality() {
+      await fetch(`${API}/api/personality`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          personality: document.getElementById('personality').value
+        })
+      });
+      fetchState();
+    }
+    
+    // Initial fetch and polling
+    fetchState();
+    setInterval(fetchState, 2000);
+  </script>
+</body>
+</html>
+

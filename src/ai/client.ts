@@ -1,7 +1,8 @@
 import OpenAI from 'openai';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
-import { SYSTEM_PROMPT, MAX_CONTEXT_MESSAGES, MAX_TOKENS, TEMPERATURE } from './prompts.js';
+import { state } from '../state.js';
+import { MAX_CONTEXT_MESSAGES, MAX_TOKENS, TEMPERATURE } from './prompts.js';
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -46,8 +47,9 @@ export async function getResponse(
         content: m.text,
       }));
 
+    // Use personality from state (can be updated via dashboard)
     const messages: ChatMessage[] = [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: state.personality },
       ...history,
       { role: 'user', content: userMessage },
     ];

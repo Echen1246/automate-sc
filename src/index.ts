@@ -13,6 +13,8 @@ import {
   type Conversation,
 } from './core/snapchat.js';
 import { initAI, isAIReady, getResponse } from './ai/client.js';
+import { startServer } from './api/server.js';
+import { state, shouldProcess, updateStats, resetStats } from './state.js';
 
 // Track processed messages to avoid duplicates
 const processedMessages = new Set<string>();
@@ -24,6 +26,7 @@ async function handleConversation(
   const { page } = instance;
 
   logger.info('New message detected', { from: conversation.name, preview: conversation.preview });
+  updateStats('received');
 
   // Open the conversation
   const opened = await openConversation(page, conversation.name);
@@ -66,7 +69,8 @@ async function handleConversation(
 
   // Generate and send response
   if (config.autoReply && isAIReady()) {
-    const delay = randomDelay(config.responseDelayMin, config.responseDelayMax);
+    // Use frequency from state
+    const delay = randomDelay(state.frequency.responseDelayMin, state.frequency.responseDelayMax);
     logger.info('Generating response', { delay: `${(delay / 1000).toFixed(1)}s` });
     await sleepRandom(delay, delay);
 
@@ -76,6 +80,7 @@ async function handleConversation(
       const sent = await sendMessage(page, response);
       if (sent) {
         processedMessages.add(messageKey);
+        updateStats('sent');
         logger.info('Response sent successfully');
       }
     } else {
@@ -96,6 +101,20 @@ async function pollLoop(instance: BrowserInstance): Promise<void> {
   const poll = async (): Promise<void> => {
     pollCount++;
 
+    // Check if we should process (running, not paused, within schedule)
+    if (!shouldProcess()) {
+      if (pollCount % 10 === 0) {
+        logger.debug('Skipping poll', { 
+          isRunning: state.isRunning, 
+          isPaused: state.isPaused 
+        });
+      }
+      // Still schedule next poll
+      const nextDelay = randomDelay(state.frequency.pollIntervalMin, state.frequency.pollIntervalMax);
+      setTimeout(poll, nextDelay);
+      return;
+    }
+
     try {
       const allConversations = await getConversations(instance.page);
       const conversations = filterConversations(allConversations);
@@ -111,6 +130,9 @@ async function pollLoop(instance: BrowserInstance): Promise<void> {
 
       // Handle unread conversations
       for (const conv of unread) {
+        // Re-check shouldProcess before each conversation
+        if (!shouldProcess()) break;
+        
         await handleConversation(instance, conv);
         if (unread.length > 1) {
           await sleepRandom(2000, 4000);
@@ -120,8 +142,8 @@ async function pollLoop(instance: BrowserInstance): Promise<void> {
       logger.error('Poll error', error);
     }
 
-    // Schedule next poll
-    const nextDelay = randomDelay(config.pollIntervalMin, config.pollIntervalMax);
+    // Schedule next poll using frequency from state
+    const nextDelay = randomDelay(state.frequency.pollIntervalMin, state.frequency.pollIntervalMax);
     setTimeout(poll, nextDelay);
   };
 
@@ -136,6 +158,9 @@ async function main(): Promise<void> {
     autoReply: config.autoReply,
     debug: config.debug,
   });
+
+  // Start dashboard server
+  startServer();
 
   // Check for session
   if (!(await hasSession())) {
@@ -153,6 +178,7 @@ async function main(): Promise<void> {
   // Handle shutdown
   const shutdown = async (): Promise<void> => {
     logger.info('Shutting down');
+    state.isRunning = false;
     await saveSession(instance.context);
     await closeBrowser(instance);
     process.exit(0);
@@ -181,6 +207,10 @@ async function main(): Promise<void> {
     unread: filtered.filter((c) => c.hasUnread).length,
   });
 
+  // Set running state
+  state.isRunning = true;
+  resetStats();
+
   // Start polling
   logger.info('Starting message monitoring');
   await pollLoop(instance);
@@ -190,4 +220,3 @@ main().catch((error) => {
   logger.error('Fatal error', error);
   process.exit(1);
 });
-
