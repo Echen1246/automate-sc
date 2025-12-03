@@ -1,7 +1,7 @@
 // Bot worker - runs independently for a single session
 // Spawned by the dashboard server, reports stats via IPC
 
-import { config } from './config/index.js';
+import { config as defaultConfig } from './config/index.js';
 import { logger } from './utils/logger.js';
 import { sleepRandom, randomDelay } from './utils/timing.js';
 import { launchBrowser, saveSession, closeBrowser, type BrowserInstance } from './core/browser.js';
@@ -15,7 +15,7 @@ import {
   exitConversation,
   type Conversation,
 } from './core/snapchat.js';
-import { initAI, isAIReady, getResponse } from './ai/client.js';
+import { initAI, isAIReady, getResponse, setSystemPrompt } from './ai/client.js';
 import { existsSync } from 'fs';
 
 // Get session path from command line args
@@ -32,9 +32,24 @@ if (!existsSync(sessionPath)) {
   process.exit(1);
 }
 
+// Runtime config (mutable, updated by server)
+const runtimeConfig = {
+  responseDelayMin: defaultConfig.responseDelayMin,
+  responseDelayMax: defaultConfig.responseDelayMax,
+  pollIntervalMin: defaultConfig.pollIntervalMin,
+  pollIntervalMax: defaultConfig.pollIntervalMax,
+  maxRepliesPerHour: 30,
+  scheduleEnabled: false,
+  scheduleStart: 9,
+  scheduleEnd: 23,
+  skipWeekends: false,
+};
+
 // Worker state
 let isRunning = true;
 let isPaused = false;
+let repliesThisHour = 0;
+let lastHourReset = Date.now();
 const processedMessages = new Set<string>();
 
 // Stats
@@ -66,13 +81,40 @@ function report(type: string, data: Record<string, unknown> = {}): void {
     ...data,
   };
 
-  // Use IPC if available
   if (process.send) {
     process.send(message);
   } else {
-    // Fallback to stdout with marker
     console.log(`__WORKER_MSG__${JSON.stringify(message)}__END__`);
   }
+}
+
+// Check schedule
+function isWithinSchedule(): boolean {
+  if (!runtimeConfig.scheduleEnabled) return true;
+
+  const now = new Date();
+  const hour = now.getHours();
+  const day = now.getDay();
+
+  if (runtimeConfig.skipWeekends && (day === 0 || day === 6)) {
+    return false;
+  }
+
+  if (runtimeConfig.scheduleStart <= runtimeConfig.scheduleEnd) {
+    return hour >= runtimeConfig.scheduleStart && hour < runtimeConfig.scheduleEnd;
+  } else {
+    return hour >= runtimeConfig.scheduleStart || hour < runtimeConfig.scheduleEnd;
+  }
+}
+
+// Check rate limit
+function canReply(): boolean {
+  const now = Date.now();
+  if (now - lastHourReset > 3600000) {
+    repliesThisHour = 0;
+    lastHourReset = now;
+  }
+  return repliesThisHour < runtimeConfig.maxRepliesPerHour;
 }
 
 // Handle messages from parent
@@ -88,7 +130,21 @@ process.on('message', (msg: { type: string; config?: Record<string, unknown> }) 
     report('status', { status: 'stopping' });
   } else if (msg.type === 'config' && msg.config) {
     // Update runtime config
-    Object.assign(config, msg.config);
+    const cfg = msg.config;
+    if (typeof cfg.responseDelayMin === 'number') runtimeConfig.responseDelayMin = cfg.responseDelayMin;
+    if (typeof cfg.responseDelayMax === 'number') runtimeConfig.responseDelayMax = cfg.responseDelayMax;
+    if (typeof cfg.maxRepliesPerHour === 'number') runtimeConfig.maxRepliesPerHour = cfg.maxRepliesPerHour;
+    if (typeof cfg.scheduleEnabled === 'boolean') runtimeConfig.scheduleEnabled = cfg.scheduleEnabled;
+    if (typeof cfg.scheduleStart === 'number') runtimeConfig.scheduleStart = cfg.scheduleStart;
+    if (typeof cfg.scheduleEnd === 'number') runtimeConfig.scheduleEnd = cfg.scheduleEnd;
+    if (typeof cfg.skipWeekends === 'boolean') runtimeConfig.skipWeekends = cfg.skipWeekends;
+    
+    // Update AI personality
+    if (typeof cfg.personality === 'string') {
+      setSystemPrompt(cfg.personality);
+    }
+    
+    logger.info('Config updated', runtimeConfig);
     report('config_updated');
   }
 });
@@ -136,8 +192,16 @@ async function handleConversation(
     return;
   }
 
-  if (config.autoReply && isAIReady()) {
-    const delay = randomDelay(config.responseDelayMin, config.responseDelayMax);
+  // Check rate limit
+  if (!canReply()) {
+    logger.info('Rate limit reached, skipping reply');
+    processedMessages.add(messageKey);
+    await exitConversation(page);
+    return;
+  }
+
+  if (defaultConfig.autoReply && isAIReady()) {
+    const delay = randomDelay(runtimeConfig.responseDelayMin, runtimeConfig.responseDelayMax);
     logger.info('Generating response', { delay: `${(delay / 1000).toFixed(1)}s` });
     await sleepRandom(delay, delay);
 
@@ -150,6 +214,7 @@ async function handleConversation(
         stats.messagesSent++;
         stats.conversationsHandled++;
         stats.lastActivity = new Date().toISOString();
+        repliesThisHour++;
         
         const responseTime = Date.now() - startTime;
         stats.responseTimes.push(responseTime);
@@ -183,6 +248,13 @@ async function pollLoop(instance: BrowserInstance): Promise<void> {
       continue;
     }
 
+    // Check schedule
+    if (!isWithinSchedule()) {
+      logger.debug('Outside schedule, waiting...');
+      await sleepRandom(30000, 60000);
+      continue;
+    }
+
     try {
       const allConversations = await getConversations(instance.page);
       const conversations = filterConversations(allConversations);
@@ -208,7 +280,7 @@ async function pollLoop(instance: BrowserInstance): Promise<void> {
       report('error', { message: String(error) });
     }
 
-    await sleepRandom(config.pollIntervalMin, config.pollIntervalMax);
+    await sleepRandom(runtimeConfig.pollIntervalMin, runtimeConfig.pollIntervalMax);
   }
 }
 

@@ -1,8 +1,7 @@
 import OpenAI from 'openai';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
-import { state } from '../state.js';
-import { MAX_CONTEXT_MESSAGES, MAX_TOKENS, TEMPERATURE } from './prompts.js';
+import { SYSTEM_PROMPT, MAX_CONTEXT_MESSAGES, MAX_TOKENS, TEMPERATURE } from './prompts.js';
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -10,6 +9,7 @@ interface ChatMessage {
 }
 
 let client: OpenAI | null = null;
+let currentSystemPrompt: string = SYSTEM_PROMPT;
 
 export function initAI(): boolean {
   if (!config.deepseekApiKey) {
@@ -30,6 +30,15 @@ export function isAIReady(): boolean {
   return client !== null;
 }
 
+export function setSystemPrompt(prompt: string): void {
+  currentSystemPrompt = prompt;
+  logger.info('System prompt updated', { length: prompt.length });
+}
+
+export function getSystemPrompt(): string {
+  return currentSystemPrompt;
+}
+
 export async function getResponse(
   userMessage: string,
   conversationHistory: Array<{ text: string; isSent: boolean }>
@@ -47,9 +56,8 @@ export async function getResponse(
         content: m.text,
       }));
 
-    // Use personality from state (can be updated via dashboard)
     const messages: ChatMessage[] = [
-      { role: 'system', content: state.personality },
+      { role: 'system', content: currentSystemPrompt },
       ...history,
       { role: 'user', content: userMessage },
     ];
@@ -76,4 +84,3 @@ export async function getResponse(
     return null;
   }
 }
-
