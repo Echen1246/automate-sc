@@ -1,28 +1,28 @@
 {
-  "name": "snapper",
-  "version": "1.0.0",
-  "description": "Local automation tool for Snapchat Web using Playwright with DeepSeek chatbot",
-  "main": "src/index.js",
+  "name": "automate-sc",
+  "version": "2.0.0",
+  "description": "Snapchat Web automation with AI chatbot",
+  "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
-    "save-cookies": "node src/save-cookies.js",
-    "debug": "DEBUG=1 node src/index.js"
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "login": "tsx src/login.ts",
+    "debug": "DEBUG=true tsx src/index.ts"
   },
-  "keywords": [
-    "snapchat",
-    "playwright",
-    "automation",
-    "chatbot"
-  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "dotenv": "^16.3.1",
+    "dotenv": "^16.4.5",
     "openai": "^4.73.0",
     "playwright": "^1.49.0",
     "playwright-extra": "^4.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
   }
 }
-

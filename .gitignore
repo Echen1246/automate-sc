@@ -1,23 +1,26 @@
 # Dependencies
 node_modules/
 
-# Auth data (sensitive!)
-storage-state.json
-cookies.json
+# Build output
+dist/
 
-# Environment variables
+# Data (sessions, logs)
+data/
+
+# Environment
 .env
 .env.local
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
 # Editor
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # Logs
 *.log
 npm-debug.log*
-

@@ -1,149 +1,65 @@
-# Snapper 🔮
+# automate-sc
 
-A **strictly local** Snapchat Web automation tool using Playwright. Detects incoming chat messages using DOM polling (the proven approach used by successful Snapchat bots).
+Snapchat Web automation with AI chatbot integration.
 
-## Why DOM Polling?
+## Structure
 
-After research, network interception doesn't work well for Snapchat because:
-- ❌ Messages use encrypted Protocol Buffers (gRPC-web)
-- ❌ API endpoints change frequently
-- ❌ WebSocket frames are binary and unreadable
-
-**DOM polling works** because Snapchat must display messages to users:
-- ✅ Poll the UI for unread indicators
-- ✅ Use MutationObserver for real-time detection
-- ✅ Read actual message text from the DOM
-- ✅ Works regardless of backend changes
+```
+src/
+  config/       Configuration
+  core/         Browser and Snapchat DOM interactions
+  ai/           DeepSeek AI client and prompts
+  utils/        Logging and timing utilities
+  index.ts      Main entry point
+  login.ts      Session saver
+```
 
 ## Setup
 
 ```bash
-# Install dependencies
 npm install
-
-# Install Playwright browser
 npx playwright install chromium
+```
+
+Create `.env`:
+```
+DEEPSEEK_API_KEY=your-key-here
 ```
 
 ## Usage
 
-### Step 1: Save Your Login Session
-
+### Save login session
 ```bash
-npm run save-cookies
+npm run login
 ```
 
-This opens a browser - log into Snapchat Web, then press Enter.
-
-### Step 2: Run the Message Monitor
-
+### Run the bot
 ```bash
 npm start
+```
 
-# Or with debug logging
+### Debug mode
+```bash
 npm run debug
 ```
 
-## What You'll See
-
-```
-🔮 Snapper - DOM-Based Message Detection
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📋 Initial conversation scan:
-   Found 5 conversations:
-   1. ⚪ John
-   2. ⚪ Sarah
-   3. 🔴 UNREAD Mike
-   4. ⚪ Team Chat
-   5. ⚪ Mom
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👀 Monitoring for new messages...
-   Polling every 3 seconds
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔
-NEW MESSAGE(S) DETECTED!
-🔔🔔🔔🔔🔔🔔🔔🔔🔔🔔
-
-📬 Unread from: Mike
-   Preview: "Hey, are you free tonight?"
-```
-
-## Adding a Chatbot
-
-The script has a clearly marked hook for your chatbot logic:
-
-```javascript
-// In src/index.js, find the CHATBOT HOOK section:
-
-// 🤖 CHATBOT HOOK - Add your logic here!
-// 
-// Example: Auto-open and read the message
-await openConversation(conv.name);
-const messages = await getCurrentMessages();
-const lastMessage = messages[messages.length - 1];
-console.log(`Last message: "${lastMessage?.text}"`);
-
-// Example: Auto-reply
-await sendMessage("Thanks for your message!");
-
-// Example: Call your AI
-const response = await yourChatbotAPI(lastMessage.text);
-await sendMessage(response);
-```
-
-## Available Functions
-
-| Function | Description |
-|----------|-------------|
-| `getConversations()` | Returns list of all conversations with unread status |
-| `openConversation(name)` | Clicks on a conversation to open it |
-| `getCurrentMessages()` | Gets recent messages from open chat |
-| `sendMessage(text)` | Types and sends a message |
-
-## How It Works
-
-1. **Polling**: Every 3 seconds, scans the sidebar for conversations with unread indicators (blue dots, bold text, badges)
-
-2. **MutationObserver**: Watches for real-time DOM changes that indicate new messages
-
-3. **Detection**: When unread count increases, logs the conversation name and preview
-
-4. **Interaction**: Helper functions let you open chats, read messages, and send replies
-
 ## Configuration
 
-Edit `src/index.js`:
+Edit `src/config/index.ts`:
 
-```javascript
-const POLL_INTERVAL = 3000;  // Check every 3 seconds (increase to reduce CPU)
-const DEBUG = true;          // Enable verbose logging
-```
+| Option | Default | Description |
+|--------|---------|-------------|
+| pollIntervalMin | 2000 | Min ms between polls |
+| pollIntervalMax | 5000 | Max ms between polls |
+| responseDelayMin | 1500 | Min ms before responding |
+| responseDelayMax | 4000 | Max ms before responding |
+| autoReply | true | Enable AI responses |
+| ignoreList | ['My AI', 'Team Snapchat'] | Conversations to skip |
 
-## Troubleshooting
+## AI Prompt
 
-### "No conversations found"
-- Wait for page to fully load (5-10 seconds)
-- Run `npm run save-cookies` to re-authenticate
-- Check if you're logged in by looking at the browser window
-
-### "Could not find message input"
-- Make sure a conversation is open
-- Snapchat may have changed their UI - check selector patterns
-
-### Bot detection / Captcha
-- The script uses stealth plugin to avoid detection
-- Don't send messages too rapidly
-- Add random delays between actions
-
-## Disclaimer
-
-This tool is for **educational and personal automation purposes only**. Using automated tools may violate Snapchat's Terms of Service. Use responsibly and at your own risk.
+Edit `src/ai/prompts.ts` to customize the bot's personality.
 
 ## License
 
 ISC
-
-## This Readme was created by AI
