@@ -349,7 +349,7 @@ app.get('/api/config', (_req, res) => {
 });
 
 // Fallback to index.html for SPA routing
-app.get('*', (_req, res) => {
+app.use((_req, res) => {
   const indexPath = resolve(process.cwd(), 'dashboard', 'dist', 'index.html');
   if (existsSync(indexPath)) {
     res.sendFile(indexPath);
