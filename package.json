@@ -8,11 +8,10 @@
     "build": "tsc && cd dashboard && npm run build",
     "build:backend": "tsc",
     "build:dashboard": "cd dashboard && npm run build",
-    "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
+    "start": "node dist/server.js",
+    "dashboard": "tsx src/server.ts",
     "dev:dashboard": "cd dashboard && npm run dev",
-    "login": "tsx src/login.ts",
-    "debug": "DEBUG=true tsx src/index.ts"
+    "debug": "DEBUG=true tsx src/server.ts"
   },
   "author": "",
   "license": "ISC",

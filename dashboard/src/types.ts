@@ -1,45 +1,21 @@
-export interface Schedule {
-  enabled: boolean;
-  startHour: number;
-  endHour: number;
-  skipWeekends: boolean;
+export interface Session {
+  id: string;
+  name: string;
+  path: string;
+  createdAt: string;
+  lastUsed: string | null;
+  status: 'stopped' | 'starting' | 'running' | 'paused' | 'stopping' | 'error';
+  stats: SessionStats | null;
 }
 
-export interface FrequencySettings {
-  pollIntervalMin: number;
-  pollIntervalMax: number;
-  responseDelayMin: number;
-  responseDelayMax: number;
-  maxRepliesPerHour: number;
-}
-
-export interface Stats {
+export interface SessionStats {
   messagesReceived: number;
   messagesSent: number;
   startedAt: string | null;
   lastActivity: string | null;
 }
 
-export interface Analytics {
-  hourlyMessages: Array<{ hour: string; sent: number; received: number }>;
-  responseTimes: number[];
-  conversationLengths: number[];
-  repliesThisHour: number;
+export interface LoginStatus {
+  inProgress: boolean;
+  name: string | null;
 }
-
-export interface BotSession {
-  id: string;
-  name: string;
-  status: 'running' | 'paused' | 'stopped';
-}
-
-export interface BotState {
-  isRunning: boolean;
-  isPaused: boolean;
-  schedule: Schedule;
-  frequency: FrequencySettings;
-  personality: string;
-  stats: Stats;
-  analytics: Analytics;
-}
-

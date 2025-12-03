@@ -8,21 +8,27 @@ import { logger } from '../utils/logger.js';
 // Enable stealth mode
 chromium.use(StealthPlugin());
 
-const SESSION_PATH = resolve(process.cwd(), 'data', 'session.json');
+const DEFAULT_SESSION_PATH = resolve(process.cwd(), 'data', 'sessions', 'default.json');
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 export interface BrowserInstance {
   browser: Browser;
   context: BrowserContext;
   page: Page;
+  sessionPath: string;
 }
 
-export async function hasSession(): Promise<boolean> {
-  return existsSync(SESSION_PATH);
+export async function hasSession(sessionPath?: string): Promise<boolean> {
+  const path = sessionPath || DEFAULT_SESSION_PATH;
+  return existsSync(path);
 }
 
-export async function launchBrowser(headless = false): Promise<BrowserInstance> {
-  logger.info('Launching browser');
+export async function launchBrowser(
+  headless = false,
+  sessionPath?: string
+): Promise<BrowserInstance> {
+  const path = sessionPath || DEFAULT_SESSION_PATH;
+  logger.info('Launching browser', { sessionPath: path });
 
   const browser = await chromium.launch({
     headless,
@@ -39,20 +45,43 @@ export async function launchBrowser(headless = false): Promise<BrowserInstance> 
   };
 
   // Load existing session if available
-  if (existsSync(SESSION_PATH)) {
+  if (existsSync(path)) {
     logger.info('Loading existing session');
-    contextOptions.storageState = SESSION_PATH;
+    contextOptions.storageState = path;
   }
 
   const context = await browser.newContext(contextOptions);
   const page = await context.newPage();
 
-  return { browser, context, page };
+  return { browser, context, page, sessionPath: path };
 }
 
-export async function saveSession(context: BrowserContext): Promise<void> {
-  await context.storageState({ path: SESSION_PATH });
-  logger.info('Session saved');
+export async function launchForLogin(): Promise<BrowserInstance> {
+  logger.info('Launching browser for login');
+
+  const browser = await chromium.launch({
+    headless: false,
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--no-first-run',
+      '--no-default-browser-check',
+    ],
+  });
+
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    userAgent: USER_AGENT,
+  });
+
+  const page = await context.newPage();
+
+  return { browser, context, page, sessionPath: '' };
+}
+
+export async function saveSession(context: BrowserContext, sessionPath?: string): Promise<void> {
+  const path = sessionPath || DEFAULT_SESSION_PATH;
+  await context.storageState({ path });
+  logger.info('Session saved', { path });
 }
 
 export async function closeBrowser(instance: BrowserInstance): Promise<void> {
@@ -60,7 +89,6 @@ export async function closeBrowser(instance: BrowserInstance): Promise<void> {
   logger.info('Browser closed');
 }
 
-export function getSessionPath(): string {
-  return SESSION_PATH;
+export function getDefaultSessionPath(): string {
+  return DEFAULT_SESSION_PATH;
 }
-

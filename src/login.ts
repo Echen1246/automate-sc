@@ -1,7 +1,10 @@
+// CLI login utility (fallback - prefer using dashboard)
+
 import * as readline from 'readline';
-import { launchBrowser, saveSession, closeBrowser, getSessionPath } from './core/browser.js';
+import { launchForLogin, saveSession, closeBrowser } from './core/browser.js';
+import { createSessionId, getSessionPath, ensureSessionsDir } from './sessions.js';
 import { logger } from './utils/logger.js';
-import { sleep } from './utils/timing.js';
+import { writeFileSync } from 'fs';
 
 async function prompt(question: string): Promise<string> {
   const rl = readline.createInterface({
@@ -18,13 +21,20 @@ async function prompt(question: string): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  logger.info('Snapchat Login Session Saver');
   console.log('');
-  console.log('This will open a browser window for you to log in.');
-  console.log('After logging in and seeing your chats, press Enter here.');
+  console.log('Snapchat Login Session Saver (CLI)');
+  console.log('==================================');
+  console.log('');
+  console.log('NOTE: You can also login via the dashboard at http://localhost:3847');
   console.log('');
 
-  const instance = await launchBrowser(false);
+  const name = await prompt('Enter a name for this account: ');
+  if (!name.trim()) {
+    console.log('Name is required');
+    process.exit(1);
+  }
+
+  const instance = await launchForLogin();
 
   logger.info('Opening Snapchat Web');
   await instance.page.goto('https://web.snapchat.com/', {
@@ -48,12 +58,28 @@ async function main(): Promise<void> {
     logger.warn('Could not verify login, saving session anyway');
   }
 
-  // Save session
-  await saveSession(instance.context);
-  logger.info('Session saved', { path: getSessionPath() });
+  // Create session
+  ensureSessionsDir();
+  const sessionId = createSessionId(name.trim());
+  const sessionPath = getSessionPath(sessionId);
+
+  // Save session with metadata
+  const state = await instance.context.storageState();
+  const stateWithMeta = {
+    ...state,
+    _meta: {
+      name: name.trim(),
+      createdAt: new Date().toISOString(),
+      lastUsed: null,
+    },
+  };
+
+  writeFileSync(sessionPath, JSON.stringify(stateWithMeta, null, 2));
+  logger.info('Session saved', { sessionId, path: sessionPath });
 
   console.log('');
-  console.log('You can now run: npm start');
+  console.log(`Session saved as: ${sessionId}`);
+  console.log('Start the dashboard: npm run dashboard');
 
   await closeBrowser(instance);
   process.exit(0);
@@ -63,4 +89,3 @@ main().catch((error) => {
   logger.error('Login failed', error);
   process.exit(1);
 });
-

@@ -1,106 +1,105 @@
 # automate-sc
 
-Snapchat Web automation with AI chatbot and production-grade dashboard.
+Snapchat Web automation with AI chatbot and command center dashboard.
 
-## Features
+## Architecture
 
-- AI-powered auto-reply using DeepSeek
-- Real-time dashboard with analytics
-- Schedule management (active hours, weekend skip)
-- Frequency controls (response delays, rate limiting)
-- Personality customization (live prompt editing)
-- Session management
+```
+Dashboard (localhost:3847)
+    |
+    +-- Session 1 --> Bot Worker (Playwright browser)
+    |
+    +-- Session 2 --> Bot Worker (Playwright browser)
+    |
+    +-- New Login --> Opens browser for login
+```
 
-## Structure
+The dashboard is the main entry point. From it you can:
+- Add new Snapchat accounts (opens browser for login)
+- Start/pause/stop bots for each session
+- Monitor message stats in real-time
+
+## Quick Start
+
+```bash
+# Install dependencies
+npm install
+cd dashboard && npm install && cd ..
+
+# Build dashboard
+npm run build:dashboard
+
+# Install browser
+npx playwright install chromium
+
+# Create .env with your DeepSeek API key
+echo "DEEPSEEK_API_KEY=your-key" > .env
+
+# Start the dashboard
+npm run dashboard
+```
+
+Open **http://localhost:3847**
+
+## Workflow
+
+1. Open dashboard at localhost:3847
+2. Click **+** to add a new session
+3. Enter account name, browser opens for login
+4. Log in to Snapchat, click "Save Session"
+5. Session appears in sidebar
+6. Click session, then **Start Bot**
+7. Bot runs in background, monitoring for messages
+
+## Project Structure
 
 ```
 src/
-  api/          Express API server
-  ai/           DeepSeek AI client and prompts
-  config/       Configuration
-  core/         Browser and Snapchat DOM interactions
-  utils/        Logging and timing utilities
-  state.ts      Shared state with analytics
-  index.ts      Main entry point
-  login.ts      Session saver
+  server.ts       # Dashboard server (main entry)
+  worker.ts       # Bot worker (spawned per session)
+  sessions.ts     # Session file management
+  core/
+    browser.ts    # Playwright browser control
+    snapchat.ts   # Snapchat DOM interactions
+  ai/
+    client.ts     # DeepSeek AI client
+    prompts.ts    # System prompts
+  config/         # Configuration
+  utils/          # Logging, timing
 
-dashboard/      React + Tailwind + Recharts dashboard
+dashboard/        # React + Tailwind dashboard
+  src/
+    App.tsx
+    components/
+      Sidebar.tsx
+      CommandCard.tsx
+
+data/
+  sessions/       # Saved session files
+    account-1.json
+    account-2.json
 ```
 
-## Setup
+## Scripts
 
-```bash
-# Install backend dependencies
-npm install
+| Command | Description |
+|---------|-------------|
+| `npm run dashboard` | Start dashboard server |
+| `npm run build:dashboard` | Build React dashboard |
+| `npm run login` | CLI login (alternative to dashboard) |
+| `npm run debug` | Start with debug logging |
 
-# Install dashboard dependencies
-cd dashboard && npm install && cd ..
-
-# Install Playwright browser
-npx playwright install chromium
-```
-
-Create `.env`:
-```
-DEEPSEEK_API_KEY=your-key-here
-```
-
-## Usage
-
-### Save login session
-```bash
-npm run login
-```
-
-### Run the bot with dashboard
-```bash
-npm run dev
-```
-
-Dashboard available at **http://localhost:3847**
-
-### Development (separate terminals)
-```bash
-# Terminal 1: Backend
-npm run dev
-
-# Terminal 2: Dashboard with hot reload
-npm run dev:dashboard
-```
-
-## Dashboard
-
-### Command Center
-- Start/Pause/Stop controls
-- Real-time status indicator
-- Session uptime and last activity
-
-### Configuration
-- Schedule: Set active hours, skip weekends
-- Frequency: Response delays, max replies per hour
-
-### Personality Matrix
-- Edit AI system prompt in real-time
-
-### Analytics
-- Traffic volume chart (hourly sent/received)
-- Response time distribution
-- KPIs: Reply rate, avg conversation length, sentiment
-
-## API Endpoints
+## API
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/state` | GET | Get current bot state |
-| `/api/start` | POST | Start bot |
-| `/api/stop` | POST | Stop bot |
-| `/api/pause` | POST | Pause bot |
-| `/api/resume` | POST | Resume bot |
-| `/api/schedule` | POST | Update schedule |
-| `/api/frequency` | POST | Update frequency |
-| `/api/personality` | POST | Update AI prompt |
+| `/api/sessions` | GET | List all sessions |
+| `/api/sessions/:id/start` | POST | Start bot |
+| `/api/sessions/:id/stop` | POST | Stop bot |
+| `/api/sessions/:id/pause` | POST | Pause bot |
+| `/api/login/start` | POST | Begin login flow |
+| `/api/login/complete` | POST | Save session |
 
 ## License
 
 ISC
-
