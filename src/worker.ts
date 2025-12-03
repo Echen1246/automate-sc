@@ -8,14 +8,13 @@ import { launchBrowser, saveSession, closeBrowser, type BrowserInstance } from '
 import {
   navigateToSnapchat,
   getConversations,
-  filterConversations,
   openConversation,
   getMessages,
   sendMessage,
   exitConversation,
   type Conversation,
 } from './core/snapchat.js';
-import { initAI, isAIReady, getResponse, setSystemPrompt } from './ai/client.js';
+import { initAI, isAIReady, getResponse, updateAIConfig } from './ai/client.js';
 import { existsSync } from 'fs';
 
 // Get session path from command line args
@@ -34,15 +33,27 @@ if (!existsSync(sessionPath)) {
 
 // Runtime config (mutable, updated by server)
 const runtimeConfig = {
+  // AI
+  aiApiKey: '',
+  aiModel: 'deepseek-chat',
+  aiTemperature: 0.8,
+  personality: '',
+  
+  // Timing
   responseDelayMin: defaultConfig.responseDelayMin,
   responseDelayMax: defaultConfig.responseDelayMax,
   pollIntervalMin: defaultConfig.pollIntervalMin,
   pollIntervalMax: defaultConfig.pollIntervalMax,
   maxRepliesPerHour: 30,
+  
+  // Schedule
   scheduleEnabled: false,
   scheduleStart: 9,
   scheduleEnd: 23,
   skipWeekends: false,
+  
+  // Filters
+  ignoreList: ['My AI', 'Team Snapchat'],
 };
 
 // Worker state
@@ -129,22 +140,47 @@ process.on('message', (msg: { type: string; config?: Record<string, unknown> }) 
     isRunning = false;
     report('status', { status: 'stopping' });
   } else if (msg.type === 'config' && msg.config) {
-    // Update runtime config
     const cfg = msg.config;
+    
+    // Update AI config
+    const aiUpdates: Record<string, unknown> = {};
+    if (typeof cfg.aiApiKey === 'string') {
+      runtimeConfig.aiApiKey = cfg.aiApiKey;
+      aiUpdates.apiKey = cfg.aiApiKey;
+    }
+    if (typeof cfg.aiModel === 'string') {
+      runtimeConfig.aiModel = cfg.aiModel;
+      aiUpdates.model = cfg.aiModel;
+    }
+    if (typeof cfg.aiTemperature === 'number') {
+      runtimeConfig.aiTemperature = cfg.aiTemperature;
+      aiUpdates.temperature = cfg.aiTemperature;
+    }
+    if (typeof cfg.personality === 'string') {
+      runtimeConfig.personality = cfg.personality;
+      aiUpdates.personality = cfg.personality;
+    }
+    if (Object.keys(aiUpdates).length > 0) {
+      updateAIConfig(aiUpdates);
+    }
+    
+    // Update timing config
     if (typeof cfg.responseDelayMin === 'number') runtimeConfig.responseDelayMin = cfg.responseDelayMin;
     if (typeof cfg.responseDelayMax === 'number') runtimeConfig.responseDelayMax = cfg.responseDelayMax;
     if (typeof cfg.maxRepliesPerHour === 'number') runtimeConfig.maxRepliesPerHour = cfg.maxRepliesPerHour;
+    
+    // Update schedule config
     if (typeof cfg.scheduleEnabled === 'boolean') runtimeConfig.scheduleEnabled = cfg.scheduleEnabled;
     if (typeof cfg.scheduleStart === 'number') runtimeConfig.scheduleStart = cfg.scheduleStart;
     if (typeof cfg.scheduleEnd === 'number') runtimeConfig.scheduleEnd = cfg.scheduleEnd;
     if (typeof cfg.skipWeekends === 'boolean') runtimeConfig.skipWeekends = cfg.skipWeekends;
     
-    // Update AI personality
-    if (typeof cfg.personality === 'string') {
-      setSystemPrompt(cfg.personality);
+    // Update ignore list
+    if (Array.isArray(cfg.ignoreList)) {
+      runtimeConfig.ignoreList = cfg.ignoreList as string[];
     }
     
-    logger.info('Config updated', runtimeConfig);
+    logger.info('Config updated');
     report('config_updated');
   }
 });
@@ -257,7 +293,16 @@ async function pollLoop(instance: BrowserInstance): Promise<void> {
 
     try {
       const allConversations = await getConversations(instance.page);
-      const conversations = filterConversations(allConversations);
+      
+      // Filter using session-specific ignore list
+      const conversations = allConversations.filter((c) => {
+        const nameLower = c.name.toLowerCase();
+        const isIgnored = runtimeConfig.ignoreList.some((ignore) =>
+          nameLower.includes(ignore.toLowerCase())
+        );
+        return !isIgnored;
+      });
+      
       const unread = conversations.filter((c) => c.hasUnread);
 
       if (pollCount % 10 === 0) {

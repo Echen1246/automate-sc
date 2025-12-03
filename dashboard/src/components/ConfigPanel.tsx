@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Gauge, Brain, Save } from 'lucide-react';
+import { Calendar, Gauge, Brain, Key, Filter, Save } from 'lucide-react';
 import type { SessionConfig } from '../types';
 
 interface ConfigPanelProps {
@@ -11,9 +11,11 @@ interface ConfigPanelProps {
 export function ConfigPanel({ config, sessionName, onSave }: ConfigPanelProps) {
   const [localConfig, setLocalConfig] = useState<SessionConfig | null>(config);
   const [hasChanges, setHasChanges] = useState(false);
+  const [ignoreListText, setIgnoreListText] = useState('');
 
   useEffect(() => {
     setLocalConfig(config);
+    setIgnoreListText(config?.ignoreList?.join(', ') || '');
     setHasChanges(false);
   }, [config]);
 
@@ -30,6 +32,12 @@ export function ConfigPanel({ config, sessionName, onSave }: ConfigPanelProps) {
     setHasChanges(true);
   };
 
+  const handleIgnoreListChange = (text: string) => {
+    setIgnoreListText(text);
+    const list = text.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+    handleChange('ignoreList', list);
+  };
+
   const handleSave = () => {
     if (localConfig) {
       onSave(localConfig);
@@ -44,6 +52,80 @@ export function ConfigPanel({ config, sessionName, onSave }: ConfigPanelProps) {
           <p className="text-sm text-slate-400">Configuring: <span className="text-white font-medium">{sessionName}</span></p>
         </div>
       )}
+
+      {/* AI Configuration */}
+      <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Key className="w-4 h-4 text-slate-500" />
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+            AI Configuration
+          </h3>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs text-slate-500 block mb-1">
+              API Key <span className="text-slate-600">(leave empty to use global .env)</span>
+            </label>
+            <input
+              type="password"
+              value={localConfig.aiApiKey}
+              onChange={(e) => handleChange('aiApiKey', e.target.value)}
+              placeholder="sk-..."
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-slate-500 block mb-1">Model</label>
+              <select
+                value={localConfig.aiModel}
+                onChange={(e) => handleChange('aiModel', e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="deepseek-chat">DeepSeek Chat</option>
+                <option value="deepseek-coder">DeepSeek Coder</option>
+                <option value="gpt-4">GPT-4 (OpenAI key required)</option>
+                <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 block mb-1">Temperature ({localConfig.aiTemperature})</label>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                value={localConfig.aiTemperature}
+                onChange={(e) => handleChange('aiTemperature', parseFloat(e.target.value))}
+                className="w-full accent-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Personality */}
+      <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Brain className="w-4 h-4 text-slate-500" />
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+            Personality
+          </h3>
+        </div>
+
+        <div>
+          <label className="text-xs text-slate-500 block mb-2">System Prompt</label>
+          <textarea
+            value={localConfig.personality}
+            onChange={(e) => handleChange('personality', e.target.value)}
+            rows={6}
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono resize-none focus:outline-none focus:border-blue-500"
+            placeholder="Define the bot's personality..."
+          />
+        </div>
+      </div>
 
       {/* Schedule */}
       <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl p-5">
@@ -174,23 +256,25 @@ export function ConfigPanel({ config, sessionName, onSave }: ConfigPanelProps) {
         </div>
       </div>
 
-      {/* Personality */}
+      {/* Ignore List */}
       <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-4">
-          <Brain className="w-4 h-4 text-slate-500" />
+          <Filter className="w-4 h-4 text-slate-500" />
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
-            Personality
+            Ignore List
           </h3>
         </div>
 
         <div>
-          <label className="text-xs text-slate-500 block mb-2">System Prompt</label>
-          <textarea
-            value={localConfig.personality}
-            onChange={(e) => handleChange('personality', e.target.value)}
-            rows={6}
-            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono resize-none focus:outline-none focus:border-blue-500"
-            placeholder="Define the bot's personality..."
+          <label className="text-xs text-slate-500 block mb-2">
+            Conversations to ignore (comma-separated)
+          </label>
+          <input
+            type="text"
+            value={ignoreListText}
+            onChange={(e) => handleIgnoreListChange(e.target.value)}
+            placeholder="My AI, Team Snapchat"
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
           />
         </div>
       </div>

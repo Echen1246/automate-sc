@@ -8,14 +8,25 @@ import { SYSTEM_PROMPT } from './ai/prompts.js';
 const SESSIONS_DIR = resolve(process.cwd(), 'data', 'sessions');
 
 export interface SessionConfig {
+  // AI Configuration
   personality: string;
+  aiApiKey: string;          // Empty = use global from .env
+  aiModel: string;
+  aiTemperature: number;
+  
+  // Timing
   responseDelayMin: number;
   responseDelayMax: number;
   maxRepliesPerHour: number;
+  
+  // Schedule
   scheduleEnabled: boolean;
   scheduleStart: number;
   scheduleEnd: number;
   skipWeekends: boolean;
+  
+  // Filters
+  ignoreList: string[];
 }
 
 export interface DailyData {
@@ -49,14 +60,25 @@ export interface SessionInfo {
 }
 
 export const DEFAULT_CONFIG: SessionConfig = {
+  // AI - empty apiKey means use global from .env
   personality: SYSTEM_PROMPT,
+  aiApiKey: '',
+  aiModel: 'deepseek-chat',
+  aiTemperature: 0.8,
+  
+  // Timing
   responseDelayMin: 1500,
   responseDelayMax: 4000,
   maxRepliesPerHour: 30,
+  
+  // Schedule
   scheduleEnabled: false,
   scheduleStart: 9,
   scheduleEnd: 23,
   skipWeekends: false,
+  
+  // Filters
+  ignoreList: ['My AI', 'Team Snapchat'],
 };
 
 function initDailyData(): DailyData[] {

@@ -1,12 +1,23 @@
 export interface SessionConfig {
+  // AI Configuration
   personality: string;
+  aiApiKey: string;
+  aiModel: string;
+  aiTemperature: number;
+  
+  // Timing
   responseDelayMin: number;
   responseDelayMax: number;
   maxRepliesPerHour: number;
+  
+  // Schedule
   scheduleEnabled: boolean;
   scheduleStart: number;
   scheduleEnd: number;
   skipWeekends: boolean;
+  
+  // Filters
+  ignoreList: string[];
 }
 
 export interface DailyData {
