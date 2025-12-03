@@ -383,8 +383,41 @@ async function main(): Promise<void> {
   logger.info('Worker starting', { sessionId, sessionPath });
   report('status', { status: 'starting' });
 
-  // Initialize AI
-  initAI();
+  // Load session config from file
+  try {
+    const { readFileSync } = await import('fs');
+    const content = readFileSync(sessionPath, 'utf-8');
+    const data = JSON.parse(content);
+    if (data._config) {
+      const cfg = data._config as Record<string, unknown>;
+      // Update runtimeConfig with saved values
+      if (typeof cfg.personality === 'string') runtimeConfig.personality = cfg.personality;
+      if (typeof cfg.aiApiKey === 'string') runtimeConfig.aiApiKey = cfg.aiApiKey;
+      if (typeof cfg.aiModel === 'string') runtimeConfig.aiModel = cfg.aiModel;
+      if (typeof cfg.aiTemperature === 'number') runtimeConfig.aiTemperature = cfg.aiTemperature;
+      if (typeof cfg.responseDelayMin === 'number') runtimeConfig.responseDelayMin = cfg.responseDelayMin;
+      if (typeof cfg.responseDelayMax === 'number') runtimeConfig.responseDelayMax = cfg.responseDelayMax;
+      if (typeof cfg.maxRepliesPerHour === 'number') runtimeConfig.maxRepliesPerHour = cfg.maxRepliesPerHour;
+      if (typeof cfg.scheduleEnabled === 'boolean') runtimeConfig.scheduleEnabled = cfg.scheduleEnabled;
+      if (typeof cfg.scheduleStart === 'number') runtimeConfig.scheduleStart = cfg.scheduleStart;
+      if (typeof cfg.scheduleEnd === 'number') runtimeConfig.scheduleEnd = cfg.scheduleEnd;
+      if (typeof cfg.skipWeekends === 'boolean') runtimeConfig.skipWeekends = cfg.skipWeekends;
+      if (Array.isArray(cfg.ignoreList)) runtimeConfig.ignoreList = cfg.ignoreList as string[];
+      if (typeof cfg.snapResponse === 'string') runtimeConfig.snapResponse = cfg.snapResponse;
+      
+      logger.info('Loaded session config', { personality: runtimeConfig.personality?.substring(0, 50) + '...' });
+    }
+  } catch (e) {
+    logger.warn('Could not load session config, using defaults');
+  }
+
+  // Initialize AI with session config
+  initAI({
+    apiKey: runtimeConfig.aiApiKey || undefined,
+    model: runtimeConfig.aiModel,
+    temperature: runtimeConfig.aiTemperature,
+    personality: runtimeConfig.personality,
+  });
 
   // Launch browser with session
   const instance = await launchBrowser(false, sessionPath);
