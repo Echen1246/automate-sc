@@ -1,13 +1,16 @@
 {
   "name": "automate-sc",
-  "version": "2.0.0",
-  "description": "Snapchat Web automation with AI chatbot",
+  "version": "2.1.0",
+  "description": "Snapchat Web automation with AI chatbot and dashboard",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cd dashboard && npm run build",
+    "build:backend": "tsc",
+    "build:dashboard": "cd dashboard && npm run build",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
+    "dev:dashboard": "cd dashboard && npm run dev",
     "login": "tsx src/login.ts",
     "debug": "DEBUG=true tsx src/index.ts"
   },

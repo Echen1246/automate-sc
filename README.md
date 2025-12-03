@@ -1,27 +1,42 @@
 # automate-sc
 
-Snapchat Web automation with AI chatbot and local dashboard.
+Snapchat Web automation with AI chatbot and production-grade dashboard.
+
+## Features
+
+- AI-powered auto-reply using DeepSeek
+- Real-time dashboard with analytics
+- Schedule management (active hours, weekend skip)
+- Frequency controls (response delays, rate limiting)
+- Personality customization (live prompt editing)
+- Session management
 
 ## Structure
 
 ```
 src/
-  api/          Dashboard API server
+  api/          Express API server
   ai/           DeepSeek AI client and prompts
   config/       Configuration
   core/         Browser and Snapchat DOM interactions
   utils/        Logging and timing utilities
-  state.ts      Shared state between bot and dashboard
+  state.ts      Shared state with analytics
   index.ts      Main entry point
   login.ts      Session saver
-dashboard/
-  index.html    Web dashboard UI
+
+dashboard/      React + Tailwind + Recharts dashboard
 ```
 
 ## Setup
 
 ```bash
+# Install backend dependencies
 npm install
+
+# Install dashboard dependencies
+cd dashboard && npm install && cd ..
+
+# Install Playwright browser
 npx playwright install chromium
 ```
 
@@ -37,20 +52,40 @@ DEEPSEEK_API_KEY=your-key-here
 npm run login
 ```
 
-### Run the bot
+### Run the bot with dashboard
 ```bash
 npm run dev
 ```
 
-Opens browser and starts bot. Dashboard available at **http://localhost:3847**
+Dashboard available at **http://localhost:3847**
 
-## Dashboard Features
+### Development (separate terminals)
+```bash
+# Terminal 1: Backend
+npm run dev
 
-- **Start/Pause/Stop** - Control bot state
-- **Statistics** - Messages sent/received, last activity
-- **Schedule** - Set active hours (e.g., 9am-11pm)
-- **Frequency** - Adjust poll intervals and response delays
-- **Personality** - Edit AI system prompt in real-time
+# Terminal 2: Dashboard with hot reload
+npm run dev:dashboard
+```
+
+## Dashboard
+
+### Command Center
+- Start/Pause/Stop controls
+- Real-time status indicator
+- Session uptime and last activity
+
+### Configuration
+- Schedule: Set active hours, skip weekends
+- Frequency: Response delays, max replies per hour
+
+### Personality Matrix
+- Edit AI system prompt in real-time
+
+### Analytics
+- Traffic volume chart (hourly sent/received)
+- Response time distribution
+- KPIs: Reply rate, avg conversation length, sentiment
 
 ## API Endpoints
 
@@ -65,35 +100,7 @@ Opens browser and starts bot. Dashboard available at **http://localhost:3847**
 | `/api/frequency` | POST | Update frequency |
 | `/api/personality` | POST | Update AI prompt |
 
-## Configuration
-
-### Schedule
-```json
-{
-  "enabled": true,
-  "startHour": 9,
-  "endHour": 23
-}
-```
-
-### Frequency (milliseconds)
-```json
-{
-  "pollIntervalMin": 2000,
-  "pollIntervalMax": 5000,
-  "responseDelayMin": 1500,
-  "responseDelayMax": 4000
-}
-```
-
-## AI Context
-
-The bot sends the **last 10 messages** to DeepSeek for context. Configurable in `src/ai/prompts.ts`:
-
-```typescript
-export const MAX_CONTEXT_MESSAGES = 10;
-```
-
 ## License
 
 ISC
+

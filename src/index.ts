@@ -14,7 +14,7 @@ import {
 } from './core/snapchat.js';
 import { initAI, isAIReady, getResponse } from './ai/client.js';
 import { startServer } from './api/server.js';
-import { state, shouldProcess, updateStats, resetStats } from './state.js';
+import { state, shouldProcess, updateStats, resetStats, recordResponseTime, recordConversationLength } from './state.js';
 
 // Track processed messages to avoid duplicates
 const processedMessages = new Set<string>();
@@ -67,11 +67,16 @@ async function handleConversation(
     return;
   }
 
+  // Record conversation length
+  recordConversationLength(messages.length);
+
   // Generate and send response
   if (config.autoReply && isAIReady()) {
     // Use frequency from state
     const delay = randomDelay(state.frequency.responseDelayMin, state.frequency.responseDelayMax);
     logger.info('Generating response', { delay: `${(delay / 1000).toFixed(1)}s` });
+    
+    const startTime = Date.now();
     await sleepRandom(delay, delay);
 
     const response = await getResponse(lastReceived.text, messages);
@@ -81,6 +86,7 @@ async function handleConversation(
       if (sent) {
         processedMessages.add(messageKey);
         updateStats('sent');
+        recordResponseTime(Date.now() - startTime);
         logger.info('Response sent successfully');
       }
     } else {
