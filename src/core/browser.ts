@@ -80,7 +80,32 @@ export async function launchForLogin(): Promise<BrowserInstance> {
 
 export async function saveSession(context: BrowserContext, sessionPath?: string): Promise<void> {
   const path = sessionPath || DEFAULT_SESSION_PATH;
-  await context.storageState({ path });
+  
+  // Get new browser state
+  const newState = await context.storageState();
+  
+  // Read existing file to preserve _meta, _config, _analytics
+  let existingData: Record<string, unknown> = {};
+  try {
+    const { readFileSync } = await import('fs');
+    const content = readFileSync(path, 'utf-8');
+    existingData = JSON.parse(content);
+  } catch {
+    // File doesn't exist or can't be read, that's ok
+  }
+  
+  // Merge: new cookies/origins + existing meta/config/analytics
+  const merged = {
+    ...newState,
+    _meta: existingData._meta,
+    _config: existingData._config,
+    _analytics: existingData._analytics,
+  };
+  
+  // Write merged data
+  const { writeFileSync } = await import('fs');
+  writeFileSync(path, JSON.stringify(merged, null, 2));
+  
   logger.info('Session saved', { path });
 }
 
