@@ -73,20 +73,16 @@ export async function getConversations(page: Page): Promise<Conversation[]> {
 
       const textLower = text.toLowerCase();
 
-      // EXCLUDE: "Delivered" means WE sent last message, waiting for reply
-      // We should NOT open these chats
-      if (textLower.includes('delivered')) {
-        conversations.push({
-          name,
-          preview,
-          hasUnread: false,
-          isNewChat: false,
-        });
-        continue;
-      }
-
-      // EXCLUDE: "Sent" or "Opened" means they already saw our message
-      if (textLower.includes('sent') && !textLower.includes('received')) {
+      // Check what status the chat shows
+      const hasDelivered = textLower.includes('delivered');
+      const hasSent = textLower.includes('sent') && !textLower.includes('received');
+      const hasOpened = textLower.includes('opened');
+      const hasReceived = textLower.includes('received');
+      const hasNewChat = name === 'New Chat' || textLower.includes('new chat');
+      const hasNewSnap = textLower.includes('new snap') || textLower.includes('new message');
+      
+      // STRICT RULE: If we sent the last message (Delivered/Sent/Opened), DO NOT open
+      if (hasDelivered || hasSent || hasOpened) {
         conversations.push({
           name,
           preview,
@@ -104,18 +100,18 @@ export async function getConversations(page: Page): Promise<Conversation[]> {
         hasUnread = true;
       }
 
-      // "Received" without "Opened" = they sent, we haven't read
-      if (textLower.includes('received') && !textLower.includes('opened')) {
+      // "Received" = they sent something
+      if (hasReceived) {
         hasUnread = true;
       }
 
       // "New Chat" = someone new messaged us
-      if (name === 'New Chat' || textLower.includes('new chat')) {
+      if (hasNewChat) {
         hasUnread = true;
       }
 
       // "New Snap" or "New Message" = unread
-      if (textLower.includes('new snap') || textLower.includes('new message')) {
+      if (hasNewSnap) {
         hasUnread = true;
       }
 
@@ -125,16 +121,19 @@ export async function getConversations(page: Page): Promise<Conversation[]> {
         hasUnread = true;
       }
 
-      // Check for bold text (Snapchat bolds unread conversations)
-      const firstSpan = el.querySelector('span, p');
-      if (firstSpan) {
-        const weight = parseInt(window.getComputedStyle(firstSpan).fontWeight);
-        if (weight >= 600) {
-          hasUnread = true;
+      // ONLY check bold if we have NO other status indicator
+      // This prevents false positives from bold styling
+      if (!hasUnread && !hasDelivered && !hasSent && !hasOpened && !hasReceived) {
+        const firstSpan = el.querySelector('span, p');
+        if (firstSpan) {
+          const weight = parseInt(window.getComputedStyle(firstSpan).fontWeight);
+          if (weight >= 600) {
+            hasUnread = true;
+          }
         }
       }
 
-      const isNewChat = name === 'New Chat' || name.toLowerCase().includes('new chat');
+      const isNewChat = hasNewChat;
 
       conversations.push({
         name,
