@@ -1,5 +1,5 @@
 // Bot worker - runs independently for a single session
-// Spawned by the dashboard server
+// Spawned by the dashboard server, reports stats via IPC
 
 import { config } from './config/index.js';
 import { logger } from './utils/logger.js';
@@ -32,43 +32,64 @@ if (!existsSync(sessionPath)) {
   process.exit(1);
 }
 
-// Worker state (simplified - full state managed by dashboard)
+// Worker state
 let isRunning = true;
 let isPaused = false;
 const processedMessages = new Set<string>();
 
-// Stats reported to parent process
+// Stats
 const stats = {
   messagesReceived: 0,
   messagesSent: 0,
+  conversationsHandled: 0,
+  responseTimes: [] as number[],
   startedAt: new Date().toISOString(),
   lastActivity: null as string | null,
 };
 
-// Report status to parent process
-function reportStatus(status: string, data?: Record<string, unknown>): void {
-  const message = JSON.stringify({
-    type: 'status',
+// Report to parent via IPC (if available) or stdout
+function report(type: string, data: Record<string, unknown> = {}): void {
+  const message = {
+    type,
     sessionId,
-    status,
-    stats,
+    timestamp: new Date().toISOString(),
+    stats: {
+      messagesReceived: stats.messagesReceived,
+      messagesSent: stats.messagesSent,
+      conversationsHandled: stats.conversationsHandled,
+      avgResponseTime: stats.responseTimes.length > 0
+        ? Math.round(stats.responseTimes.reduce((a, b) => a + b, 0) / stats.responseTimes.length)
+        : 0,
+      startedAt: stats.startedAt,
+      lastActivity: stats.lastActivity,
+    },
     ...data,
-  });
-  // Write to stdout for parent process to read
-  console.log(`[WORKER] ${message}`);
+  };
+
+  // Use IPC if available
+  if (process.send) {
+    process.send(message);
+  } else {
+    // Fallback to stdout with marker
+    console.log(`__WORKER_MSG__${JSON.stringify(message)}__END__`);
+  }
 }
 
 // Handle messages from parent
-process.on('message', (msg: { type: string }) => {
+process.on('message', (msg: { type: string; config?: Record<string, unknown> }) => {
   if (msg.type === 'pause') {
     isPaused = true;
-    reportStatus('paused');
+    report('status', { status: 'paused' });
   } else if (msg.type === 'resume') {
     isPaused = false;
-    reportStatus('running');
+    report('status', { status: 'running' });
   } else if (msg.type === 'stop') {
     isRunning = false;
-    reportStatus('stopping');
+    report('status', { status: 'stopping' });
+  } else if (msg.type === 'config' && msg.config) {
+    // Update runtime config
+    Object.assign(config, msg.config);
+    report('config_updated');
   }
 });
 
@@ -77,11 +98,13 @@ async function handleConversation(
   conversation: Conversation
 ): Promise<void> {
   const { page } = instance;
+  const startTime = Date.now();
 
-  logger.info('New message detected', { sessionId, from: conversation.name });
   stats.messagesReceived++;
   stats.lastActivity = new Date().toISOString();
-  reportStatus('processing', { conversation: conversation.name });
+  report('message_received', { from: conversation.name });
+
+  logger.info('Processing message', { sessionId, from: conversation.name });
 
   const opened = await openConversation(page, conversation.name);
   if (!opened) {
@@ -125,9 +148,20 @@ async function handleConversation(
       if (sent) {
         processedMessages.add(messageKey);
         stats.messagesSent++;
+        stats.conversationsHandled++;
         stats.lastActivity = new Date().toISOString();
+        
+        const responseTime = Date.now() - startTime;
+        stats.responseTimes.push(responseTime);
+        if (stats.responseTimes.length > 100) {
+          stats.responseTimes.shift();
+        }
+
+        report('message_sent', { 
+          to: conversation.name,
+          responseTime,
+        });
         logger.info('Response sent');
-        reportStatus('running');
       }
     }
   } else {
@@ -154,8 +188,12 @@ async function pollLoop(instance: BrowserInstance): Promise<void> {
       const conversations = filterConversations(allConversations);
       const unread = conversations.filter((c) => c.hasUnread);
 
-      if (pollCount % 5 === 0 || unread.length > 0) {
-        logger.info('Poll status', { poll: pollCount, total: conversations.length, unread: unread.length });
+      if (pollCount % 10 === 0) {
+        report('heartbeat', { 
+          pollCount,
+          totalConversations: conversations.length,
+          unreadCount: unread.length,
+        });
       }
 
       for (const conv of unread) {
@@ -167,6 +205,7 @@ async function pollLoop(instance: BrowserInstance): Promise<void> {
       }
     } catch (error) {
       logger.error('Poll error', error);
+      report('error', { message: String(error) });
     }
 
     await sleepRandom(config.pollIntervalMin, config.pollIntervalMax);
@@ -175,39 +214,36 @@ async function pollLoop(instance: BrowserInstance): Promise<void> {
 
 async function main(): Promise<void> {
   logger.info('Worker starting', { sessionId, sessionPath });
-  reportStatus('starting');
+  report('status', { status: 'starting' });
 
   // Initialize AI
   initAI();
 
   // Launch browser with session
-  const browser = await launchBrowser(false);
-  
-  // Load session manually since we have a custom path
-  const context = browser.context;
-  
+  const instance = await launchBrowser(false, sessionPath);
+
   // Navigate to Snapchat
-  const navigated = await navigateToSnapchat(browser.page);
+  const navigated = await navigateToSnapchat(instance.page);
   if (!navigated) {
     logger.error('Failed to navigate to Snapchat');
-    reportStatus('error', { message: 'Failed to navigate' });
-    await closeBrowser(browser);
+    report('error', { message: 'Failed to navigate' });
+    await closeBrowser(instance);
     process.exit(1);
   }
 
   // Save updated session
-  await saveSession(context);
+  await saveSession(instance.context, sessionPath);
 
-  reportStatus('running');
+  report('status', { status: 'running' });
   logger.info('Worker running');
 
   // Handle shutdown
   const shutdown = async (): Promise<void> => {
     logger.info('Worker shutting down');
     isRunning = false;
-    reportStatus('stopped');
-    await saveSession(context);
-    await closeBrowser(browser);
+    report('status', { status: 'stopped' });
+    await saveSession(instance.context, sessionPath);
+    await closeBrowser(instance);
     process.exit(0);
   };
 
@@ -215,14 +251,13 @@ async function main(): Promise<void> {
   process.on('SIGTERM', shutdown);
 
   // Start polling
-  await pollLoop(browser);
+  await pollLoop(instance);
 
   await shutdown();
 }
 
 main().catch((error) => {
   logger.error('Worker fatal error', error);
-  reportStatus('error', { message: error.message });
+  report('error', { message: String(error) });
   process.exit(1);
 });
-

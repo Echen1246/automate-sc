@@ -1,4 +1,4 @@
-import type { Session, LoginStatus } from './types';
+import type { Session, LoginStatus, Analytics, GlobalConfig } from './types';
 
 const API_BASE = '/api';
 
@@ -54,4 +54,28 @@ export async function cancelLogin(): Promise<void> {
 export async function getLoginStatus(): Promise<LoginStatus> {
   const res = await fetch(`${API_BASE}/login/status`);
   return res.json();
+}
+
+// Analytics
+export async function getAnalytics(): Promise<Analytics> {
+  const res = await fetch(`${API_BASE}/analytics`);
+  return res.json();
+}
+
+export async function resetAnalytics(): Promise<void> {
+  await fetch(`${API_BASE}/analytics/reset`, { method: 'POST' });
+}
+
+// Config
+export async function getConfig(): Promise<GlobalConfig> {
+  const res = await fetch(`${API_BASE}/config`);
+  return res.json();
+}
+
+export async function updateConfig(config: Partial<GlobalConfig>): Promise<void> {
+  await fetch(`${API_BASE}/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
 }
