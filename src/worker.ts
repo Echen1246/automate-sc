@@ -12,6 +12,7 @@ import {
   getMessages,
   sendMessage,
   exitConversation,
+  scrollConversationList,
   type Conversation,
 } from './core/snapchat.js';
 import { initAI, isAIReady, getResponse, updateAIConfig } from './ai/client.js';
@@ -319,6 +320,13 @@ async function pollLoop(instance: BrowserInstance): Promise<void> {
         if (unread.length > 1) {
           await sleepRandom(2000, 4000);
         }
+      }
+
+      // If we processed multiple unread chats, scroll to find more
+      // This handles backlog of messages
+      if (unread.length >= 3) {
+        logger.debug('Scrolling to check for more unread chats');
+        await scrollConversationList(instance.page);
       }
     } catch (error) {
       logger.error('Poll error', error);

@@ -73,31 +73,59 @@ export async function getConversations(page: Page): Promise<Conversation[]> {
 
       const textLower = text.toLowerCase();
 
-      // Check for unread indicators
+      // EXCLUDE: "Delivered" means WE sent last message, waiting for reply
+      // We should NOT open these chats
+      if (textLower.includes('delivered')) {
+        conversations.push({
+          name,
+          preview,
+          hasUnread: false,
+          isNewChat: false,
+        });
+        continue;
+      }
+
+      // EXCLUDE: "Sent" or "Opened" means they already saw our message
+      if (textLower.includes('sent') && !textLower.includes('received')) {
+        conversations.push({
+          name,
+          preview,
+          hasUnread: false,
+          isNewChat: false,
+        });
+        continue;
+      }
+
+      // Check for unread indicators (they sent us something)
       let hasUnread = false;
 
-      // "Received" with time = unread
+      // "Received" with time = they sent us a message we haven't opened
       if (/received\s*·?\s*\d+[mhs]/i.test(text)) {
         hasUnread = true;
       }
 
-      // "Received" without "Opened" = unread
+      // "Received" without "Opened" = they sent, we haven't read
       if (textLower.includes('received') && !textLower.includes('opened')) {
         hasUnread = true;
       }
 
-      // "New Chat" = unread
+      // "New Chat" = someone new messaged us
       if (name === 'New Chat' || textLower.includes('new chat')) {
         hasUnread = true;
       }
 
-      // Check for notification elements
+      // "New Snap" or "New Message" = unread
+      if (textLower.includes('new snap') || textLower.includes('new message')) {
+        hasUnread = true;
+      }
+
+      // Check for notification elements (blue dot, badge, etc.)
       const el = item as HTMLElement;
       if (el.querySelector('[class*="notification"], [class*="badge"], [class*="dot"], [class*="unread"]')) {
         hasUnread = true;
       }
 
-      // Check for bold text
+      // Check for bold text (Snapchat bolds unread conversations)
       const firstSpan = el.querySelector('span, p');
       if (firstSpan) {
         const weight = parseInt(window.getComputedStyle(firstSpan).fontWeight);
@@ -118,6 +146,27 @@ export async function getConversations(page: Page): Promise<Conversation[]> {
 
     return conversations;
   });
+}
+
+// Scroll conversation list to load more chats
+export async function scrollConversationList(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    // Find the scrollable conversation container
+    const scrollContainers = document.querySelectorAll(
+      '[role="listbox"], [role="list"], [class*="scroll"], aside > div'
+    );
+    
+    for (const container of scrollContainers) {
+      const el = container as HTMLElement;
+      // Check if this element is scrollable
+      if (el.scrollHeight > el.clientHeight) {
+        el.scrollTop += 300; // Scroll down 300px
+        break;
+      }
+    }
+  });
+  
+  await sleep(500); // Wait for new content to load
 }
 
 export async function openConversation(page: Page, name: string): Promise<boolean> {
