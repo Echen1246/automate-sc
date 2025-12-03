@@ -10,13 +10,16 @@ import {
   getSessions,
   getSession,
   getSessionPath,
+  getSessionConfig,
+  updateSessionConfig,
   createSessionId,
   updateSessionMeta,
   deleteSession,
   ensureSessionsDir,
+  DEFAULT_CONFIG,
+  type SessionConfig,
 } from './sessions.js';
 import { launchForLogin, saveSession, closeBrowser } from './core/browser.js';
-import { SYSTEM_PROMPT } from './ai/prompts.js';
 
 const app = express();
 const PORT = 3847;
@@ -48,29 +51,18 @@ interface BotProcess {
   stats: BotStats;
 }
 
-interface HourlyData {
-  hour: string;
+interface DailyData {
+  date: string; // YYYY-MM-DD
   received: number;
   sent: number;
 }
 
 interface Analytics {
-  hourlyData: HourlyData[];
+  dailyData: DailyData[];
   totalReceived: number;
   totalSent: number;
   responseTimes: number[];
   lastUpdated: string;
-}
-
-interface GlobalConfig {
-  personality: string;
-  scheduleEnabled: boolean;
-  scheduleStart: number;
-  scheduleEnd: number;
-  skipWeekends: boolean;
-  responseDelayMin: number;
-  responseDelayMax: number;
-  maxRepliesPerHour: number;
 }
 
 // =========================================
@@ -81,31 +73,30 @@ const activeBots = new Map<string, BotProcess>();
 let loginBrowser: Awaited<ReturnType<typeof launchForLogin>> | null = null;
 let pendingLoginName: string | null = null;
 
-// Global config (persisted in memory, could save to file)
-const globalConfig: GlobalConfig = {
-  personality: SYSTEM_PROMPT,
-  scheduleEnabled: false,
-  scheduleStart: 9,
-  scheduleEnd: 23,
-  skipWeekends: false,
-  responseDelayMin: 1500,
-  responseDelayMax: 4000,
-  maxRepliesPerHour: 30,
-};
-
 // Analytics (persisted to file)
 let analytics: Analytics = loadAnalytics();
 
 function loadAnalytics(): Analytics {
   try {
     if (existsSync(ANALYTICS_PATH)) {
-      return JSON.parse(readFileSync(ANALYTICS_PATH, 'utf-8'));
+      const data = JSON.parse(readFileSync(ANALYTICS_PATH, 'utf-8'));
+      // Migrate from hourly to daily if needed
+      if (data.hourlyData && !data.dailyData) {
+        return {
+          dailyData: initDailyData(),
+          totalReceived: data.totalReceived || 0,
+          totalSent: data.totalSent || 0,
+          responseTimes: data.responseTimes || [],
+          lastUpdated: new Date().toISOString(),
+        };
+      }
+      return data;
     }
   } catch (e) {
     logger.warn('Failed to load analytics', { error: e });
   }
   return {
-    hourlyData: initHourlyData(),
+    dailyData: initDailyData(),
     totalReceived: 0,
     totalSent: 0,
     responseTimes: [],
@@ -123,13 +114,13 @@ function saveAnalytics(): void {
   }
 }
 
-function initHourlyData(): HourlyData[] {
-  const data: HourlyData[] = [];
+function initDailyData(): DailyData[] {
+  const data: DailyData[] = [];
   const now = new Date();
-  for (let i = 23; i >= 0; i--) {
-    const hour = new Date(now.getTime() - i * 3600000);
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date(now.getTime() - i * 86400000);
     data.push({
-      hour: hour.getHours().toString().padStart(2, '0') + ':00',
+      date: date.toISOString().split('T')[0],
       received: 0,
       sent: 0,
     });
@@ -137,12 +128,25 @@ function initHourlyData(): HourlyData[] {
   return data;
 }
 
-function updateHourlyData(type: 'received' | 'sent'): void {
-  const hourKey = new Date().getHours().toString().padStart(2, '0') + ':00';
-  const hourData = analytics.hourlyData.find((h) => h.hour === hourKey);
-  if (hourData) {
-    hourData[type]++;
+function getTodayKey(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+function updateDailyData(type: 'received' | 'sent'): void {
+  const today = getTodayKey();
+  let dayData = analytics.dailyData.find((d) => d.date === today);
+  
+  if (!dayData) {
+    // Add today, remove oldest if > 7 days
+    dayData = { date: today, received: 0, sent: 0 };
+    analytics.dailyData.push(dayData);
+    if (analytics.dailyData.length > 7) {
+      analytics.dailyData.shift();
+    }
   }
+  
+  dayData[type]++;
+  
   if (type === 'received') {
     analytics.totalReceived++;
   } else {
@@ -180,10 +184,10 @@ function handleWorkerMessage(sessionId: string, msg: Record<string, unknown>): v
       bot.status = msg.status as BotProcess['status'];
       break;
     case 'message_received':
-      updateHourlyData('received');
+      updateDailyData('received');
       break;
     case 'message_sent':
-      updateHourlyData('sent');
+      updateDailyData('sent');
       if (typeof msg.responseTime === 'number') {
         recordResponseTime(msg.responseTime);
       }
@@ -241,6 +245,37 @@ app.get('/api/sessions/:id', (req, res) => {
   });
 });
 
+// Get session config
+app.get('/api/sessions/:id/config', (req, res) => {
+  const config = getSessionConfig(req.params.id);
+  if (!config) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  res.json(config);
+});
+
+// Update session config
+app.post('/api/sessions/:id/config', (req, res) => {
+  const sessionId = req.params.id;
+  const updates = req.body as Partial<SessionConfig>;
+  
+  const newConfig = updateSessionConfig(sessionId, updates);
+  if (!newConfig) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  
+  // If bot is running, send config update
+  const bot = activeBots.get(sessionId);
+  if (bot && bot.process.send) {
+    bot.process.send({ type: 'config', config: newConfig });
+    logger.info('Config sent to running bot', { sessionId });
+  }
+  
+  res.json({ success: true, config: newConfig });
+});
+
 app.post('/api/sessions/:id/start', (req, res) => {
   const sessionId = req.params.id;
   const session = getSession(sessionId);
@@ -289,13 +324,21 @@ app.post('/api/sessions/:id/start', (req, res) => {
   // Handle IPC messages
   child.on('message', (msg: Record<string, unknown>) => {
     handleWorkerMessage(sessionId, msg);
+    
+    // Send initial config when worker is ready
+    if (msg.type === 'status' && msg.status === 'running') {
+      const config = getSessionConfig(sessionId);
+      if (config && child.send) {
+        child.send({ type: 'config', config });
+        logger.info('Initial config sent to bot', { sessionId });
+      }
+    }
   });
 
   // Handle stdout (fallback for non-IPC)
   child.stdout?.on('data', (data) => {
     const output = data.toString();
     parseWorkerOutput(sessionId, output);
-    // Log non-message output
     const cleanOutput = output.replace(/__WORKER_MSG__.+__END__/g, '').trim();
     if (cleanOutput) {
       console.log(`[Bot:${sessionId}] ${cleanOutput}`);
@@ -438,6 +481,7 @@ app.post('/api/login/complete', async (_req, res) => {
         createdAt: new Date().toISOString(),
         lastUsed: null,
       },
+      _config: DEFAULT_CONFIG,
     };
 
     writeFileSync(sessionPath, JSON.stringify(stateWithMeta, null, 2));
@@ -484,7 +528,7 @@ app.get('/api/analytics', (_req, res) => {
     : 0;
 
   res.json({
-    hourlyData: analytics.hourlyData,
+    dailyData: analytics.dailyData,
     totalReceived: analytics.totalReceived,
     totalSent: analytics.totalSent,
     avgResponseTime,
@@ -496,7 +540,7 @@ app.get('/api/analytics', (_req, res) => {
 
 app.post('/api/analytics/reset', (_req, res) => {
   analytics = {
-    hourlyData: initHourlyData(),
+    dailyData: initDailyData(),
     totalReceived: 0,
     totalSent: 0,
     responseTimes: [],
@@ -504,51 +548,6 @@ app.post('/api/analytics/reset', (_req, res) => {
   };
   saveAnalytics();
   res.json({ success: true });
-});
-
-// =========================================
-// CONFIG ENDPOINTS
-// =========================================
-
-app.get('/api/config', (_req, res) => {
-  res.json(globalConfig);
-});
-
-app.post('/api/config', (req, res) => {
-  const updates = req.body;
-  
-  if (typeof updates.personality === 'string') {
-    globalConfig.personality = updates.personality;
-  }
-  if (typeof updates.scheduleEnabled === 'boolean') {
-    globalConfig.scheduleEnabled = updates.scheduleEnabled;
-  }
-  if (typeof updates.scheduleStart === 'number') {
-    globalConfig.scheduleStart = updates.scheduleStart;
-  }
-  if (typeof updates.scheduleEnd === 'number') {
-    globalConfig.scheduleEnd = updates.scheduleEnd;
-  }
-  if (typeof updates.skipWeekends === 'boolean') {
-    globalConfig.skipWeekends = updates.skipWeekends;
-  }
-  if (typeof updates.responseDelayMin === 'number') {
-    globalConfig.responseDelayMin = updates.responseDelayMin;
-  }
-  if (typeof updates.responseDelayMax === 'number') {
-    globalConfig.responseDelayMax = updates.responseDelayMax;
-  }
-  if (typeof updates.maxRepliesPerHour === 'number') {
-    globalConfig.maxRepliesPerHour = updates.maxRepliesPerHour;
-  }
-
-  // Broadcast config to all running bots
-  for (const [, bot] of activeBots) {
-    bot.process.send?.({ type: 'config', config: globalConfig });
-  }
-
-  logger.info('Config updated', globalConfig);
-  res.json({ success: true, config: globalConfig });
 });
 
 // =========================================

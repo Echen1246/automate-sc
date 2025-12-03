@@ -5,10 +5,10 @@ import { KPICards } from './components/KPICards';
 import { TrafficChart, ResponseTimeChart } from './components/Charts';
 import { ConfigPanel } from './components/ConfigPanel';
 import * as api from './api';
-import type { Session, LoginStatus, Analytics, GlobalConfig } from './types';
+import type { Session, SessionConfig, LoginStatus, Analytics } from './types';
 
 const DEFAULT_ANALYTICS: Analytics = {
-  hourlyData: [],
+  dailyData: [],
   totalReceived: 0,
   totalSent: 0,
   avgResponseTime: 0,
@@ -17,23 +17,11 @@ const DEFAULT_ANALYTICS: Analytics = {
   responseTimes: [],
 };
 
-const DEFAULT_CONFIG: GlobalConfig = {
-  personality: '',
-  scheduleEnabled: false,
-  scheduleStart: 9,
-  scheduleEnd: 23,
-  skipWeekends: false,
-  responseDelayMin: 1500,
-  responseDelayMax: 4000,
-  maxRepliesPerHour: 30,
-};
-
 function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [loginStatus, setLoginStatus] = useState<LoginStatus>({ inProgress: false, name: null });
   const [analytics, setAnalytics] = useState<Analytics>(DEFAULT_ANALYTICS);
-  const [config, setConfig] = useState<GlobalConfig>(DEFAULT_CONFIG);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'config'>('overview');
 
@@ -41,16 +29,14 @@ function App() {
 
   const refresh = async () => {
     try {
-      const [sessionsData, loginData, analyticsData, configData] = await Promise.all([
+      const [sessionsData, loginData, analyticsData] = await Promise.all([
         api.getSessions(),
         api.getLoginStatus(),
         api.getAnalytics(),
-        api.getConfig(),
       ]);
       setSessions(sessionsData);
       setLoginStatus(loginData);
       setAnalytics(analyticsData);
-      setConfig(configData);
       setError(null);
     } catch {
       setError('Failed to connect to server');
@@ -143,9 +129,10 @@ function App() {
     }
   };
 
-  const handleSaveConfig = async (updates: Partial<GlobalConfig>) => {
+  const handleSaveConfig = async (updates: Partial<SessionConfig>) => {
+    if (!activeSessionId) return;
     try {
-      await api.updateConfig(updates);
+      await api.updateSessionConfig(activeSessionId, updates);
       refresh();
     } catch {
       setError('Failed to save configuration');
@@ -315,7 +302,11 @@ function App() {
 
           {activeTab === 'config' && (
             <div className="max-w-2xl mx-auto">
-              <ConfigPanel config={config} onSave={handleSaveConfig} />
+              <ConfigPanel
+                config={activeSession?.config || null}
+                sessionName={activeSession?.name || null}
+                onSave={handleSaveConfig}
+              />
             </div>
           )}
         </div>

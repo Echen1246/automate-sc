@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Gauge, Brain, Save } from 'lucide-react';
-import type { GlobalConfig } from '../types';
+import type { SessionConfig } from '../types';
 
 interface ConfigPanelProps {
-  config: GlobalConfig;
-  onSave: (config: Partial<GlobalConfig>) => void;
+  config: SessionConfig | null;
+  sessionName: string | null;
+  onSave: (config: Partial<SessionConfig>) => void;
 }
 
-export function ConfigPanel({ config, onSave }: ConfigPanelProps) {
-  const [localConfig, setLocalConfig] = useState(config);
+export function ConfigPanel({ config, sessionName, onSave }: ConfigPanelProps) {
+  const [localConfig, setLocalConfig] = useState<SessionConfig | null>(config);
   const [hasChanges, setHasChanges] = useState(false);
 
   useEffect(() => {
@@ -16,18 +17,34 @@ export function ConfigPanel({ config, onSave }: ConfigPanelProps) {
     setHasChanges(false);
   }, [config]);
 
-  const handleChange = (key: keyof GlobalConfig, value: unknown) => {
-    setLocalConfig((prev) => ({ ...prev, [key]: value }));
+  if (!config || !localConfig) {
+    return (
+      <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl p-8">
+        <p className="text-slate-500 text-center">Select a session to configure</p>
+      </div>
+    );
+  }
+
+  const handleChange = (key: keyof SessionConfig, value: unknown) => {
+    setLocalConfig((prev) => prev ? { ...prev, [key]: value } : null);
     setHasChanges(true);
   };
 
   const handleSave = () => {
-    onSave(localConfig);
-    setHasChanges(false);
+    if (localConfig) {
+      onSave(localConfig);
+      setHasChanges(false);
+    }
   };
 
   return (
     <div className="space-y-4">
+      {sessionName && (
+        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl p-4">
+          <p className="text-sm text-slate-400">Configuring: <span className="text-white font-medium">{sessionName}</span></p>
+        </div>
+      )}
+
       {/* Schedule */}
       <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-4">
@@ -191,4 +208,3 @@ export function ConfigPanel({ config, onSave }: ConfigPanelProps) {
     </div>
   );
 }
-

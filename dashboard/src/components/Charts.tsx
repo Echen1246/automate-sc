@@ -16,20 +16,30 @@ interface ChartsProps {
   analytics: Analytics;
 }
 
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return days[date.getDay()];
+}
+
 export function TrafficChart({ analytics }: ChartsProps) {
+  const data = analytics.dailyData.map((d) => ({
+    ...d,
+    day: formatDate(d.date),
+  }));
+
   return (
     <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl p-5">
       <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">
-        Traffic Volume (Hourly)
+        Traffic Volume (Last 7 Days)
       </h3>
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={analytics.hourlyData} barGap={0}>
+          <BarChart data={data} barGap={0}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis
-              dataKey="hour"
-              tick={{ fill: '#64748b', fontSize: 10 }}
-              interval={2}
+              dataKey="day"
+              tick={{ fill: '#64748b', fontSize: 11 }}
             />
             <YAxis tick={{ fill: '#64748b', fontSize: 10 }} />
             <Tooltip
@@ -40,6 +50,12 @@ export function TrafficChart({ analytics }: ChartsProps) {
                 fontSize: '12px',
               }}
               labelStyle={{ color: '#94a3b8' }}
+              labelFormatter={(_, payload) => {
+                if (payload && payload[0]) {
+                  return payload[0].payload.date;
+                }
+                return '';
+              }}
             />
             <Legend
               wrapperStyle={{ fontSize: '12px' }}
@@ -115,4 +131,3 @@ export function ResponseTimeChart({ analytics }: ChartsProps) {
     </div>
   );
 }
-

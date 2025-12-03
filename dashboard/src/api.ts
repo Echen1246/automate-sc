@@ -1,4 +1,4 @@
-import type { Session, LoginStatus, Analytics, GlobalConfig } from './types';
+import type { Session, SessionConfig, LoginStatus, Analytics } from './types';
 
 const API_BASE = '/api';
 
@@ -33,6 +33,20 @@ export async function deleteSession(id: string): Promise<void> {
   await fetch(`${API_BASE}/sessions/${id}`, { method: 'DELETE' });
 }
 
+// Session Config
+export async function getSessionConfig(id: string): Promise<SessionConfig> {
+  const res = await fetch(`${API_BASE}/sessions/${id}/config`);
+  return res.json();
+}
+
+export async function updateSessionConfig(id: string, config: Partial<SessionConfig>): Promise<void> {
+  await fetch(`${API_BASE}/sessions/${id}/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+}
+
 // Login
 export async function startLogin(name: string): Promise<void> {
   await fetch(`${API_BASE}/login/start`, {
@@ -64,18 +78,4 @@ export async function getAnalytics(): Promise<Analytics> {
 
 export async function resetAnalytics(): Promise<void> {
   await fetch(`${API_BASE}/analytics/reset`, { method: 'POST' });
-}
-
-// Config
-export async function getConfig(): Promise<GlobalConfig> {
-  const res = await fetch(`${API_BASE}/config`);
-  return res.json();
-}
-
-export async function updateConfig(config: Partial<GlobalConfig>): Promise<void> {
-  await fetch(`${API_BASE}/config`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config),
-  });
 }
