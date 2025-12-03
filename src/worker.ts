@@ -74,27 +74,6 @@ const stats = {
   lastActivity: null as string | null,
 };
 
-// Cooldown cache - prevent reopening chats we just replied to
-// Key: conversation name, Value: timestamp when we last replied
-const replyCooldown = new Map<string, number>();
-const COOLDOWN_MS = 30000; // Don't reopen a chat for 30 seconds after replying
-
-function isOnCooldown(name: string): boolean {
-  const lastReply = replyCooldown.get(name);
-  if (!lastReply) return false;
-  const elapsed = Date.now() - lastReply;
-  if (elapsed < COOLDOWN_MS) {
-    logger.debug('Chat on cooldown', { name, remainingMs: COOLDOWN_MS - elapsed });
-    return true;
-  }
-  replyCooldown.delete(name);
-  return false;
-}
-
-function setCooldown(name: string): void {
-  replyCooldown.set(name, Date.now());
-  logger.debug('Cooldown set', { name, durationMs: COOLDOWN_MS });
-}
 
 // Report to parent via IPC (if available) or stdout
 function report(type: string, data: Record<string, unknown> = {}): void {
@@ -275,9 +254,6 @@ async function handleConversation(
         stats.lastActivity = new Date().toISOString();
         repliesThisHour++;
         
-        // Set cooldown to prevent reopening this chat too soon
-        setCooldown(conversation.name);
-        
         const responseTime = Date.now() - startTime;
         stats.responseTimes.push(responseTime);
         if (stats.responseTimes.length > 100) {
@@ -320,7 +296,7 @@ async function pollLoop(instance: BrowserInstance): Promise<void> {
     try {
       const allConversations = await getConversations(instance.page);
       
-      // Filter using session-specific ignore list AND cooldown
+      // Filter using session-specific ignore list
       const conversations = allConversations.filter((c) => {
         const nameLower = c.name.toLowerCase();
         const isIgnored = runtimeConfig.ignoreList.some((ignore) =>
@@ -329,12 +305,7 @@ async function pollLoop(instance: BrowserInstance): Promise<void> {
         return !isIgnored;
       });
       
-      // Filter out chats on cooldown (we just replied)
-      const unread = conversations.filter((c) => {
-        if (!c.hasUnread) return false;
-        if (isOnCooldown(c.name)) return false;
-        return true;
-      });
+      const unread = conversations.filter((c) => c.hasUnread);
 
       if (pollCount % 10 === 0) {
         report('heartbeat', { 
