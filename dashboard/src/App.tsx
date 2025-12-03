@@ -138,11 +138,11 @@ function App() {
     }
   };
 
-  const handleSaveConfig = async (updates: Partial<SessionConfig>) => {
+  const handleSaveConfig = async (updates: Partial<SessionConfig>): Promise<void> => {
     if (!activeSessionId) return;
     try {
       await api.updateSessionConfig(activeSessionId, updates);
-      refreshSessions();
+      await refreshSessions();
     } catch {
       setError('Failed to save configuration');
     }
@@ -228,6 +228,7 @@ function App() {
             <div className="max-w-2xl mx-auto">
               <ConfigPanel
                 config={activeSession?.config || null}
+                sessionId={activeSessionId}
                 sessionName={activeSession?.name || null}
                 onSave={handleSaveConfig}
               />

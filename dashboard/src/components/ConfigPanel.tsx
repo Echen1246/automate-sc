@@ -1,23 +1,38 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Calendar, Gauge, Brain, Key, Filter, Save } from 'lucide-react';
 import type { SessionConfig } from '../types';
 
 interface ConfigPanelProps {
   config: SessionConfig | null;
+  sessionId: string | null;
   sessionName: string | null;
   onSave: (config: Partial<SessionConfig>) => void;
 }
 
-export function ConfigPanel({ config, sessionName, onSave }: ConfigPanelProps) {
+export function ConfigPanel({ config, sessionId, sessionName, onSave }: ConfigPanelProps) {
   const [localConfig, setLocalConfig] = useState<SessionConfig | null>(config);
   const [hasChanges, setHasChanges] = useState(false);
   const [ignoreListText, setIgnoreListText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const lastSessionId = useRef<string | null>(null);
 
+  // Only reset local config when SESSION changes, not when config prop updates
   useEffect(() => {
-    setLocalConfig(config);
-    setIgnoreListText(config?.ignoreList?.join(', ') || '');
-    setHasChanges(false);
-  }, [config]);
+    if (sessionId !== lastSessionId.current) {
+      lastSessionId.current = sessionId;
+      setLocalConfig(config);
+      setIgnoreListText(config?.ignoreList?.join(', ') || '');
+      setHasChanges(false);
+    }
+  }, [sessionId, config]);
+
+  // Update local config from server ONLY if we don't have unsaved changes
+  useEffect(() => {
+    if (!hasChanges && config && sessionId === lastSessionId.current) {
+      setLocalConfig(config);
+      setIgnoreListText(config?.ignoreList?.join(', ') || '');
+    }
+  }, [config, hasChanges, sessionId]);
 
   if (!config || !localConfig) {
     return (
@@ -38,10 +53,12 @@ export function ConfigPanel({ config, sessionName, onSave }: ConfigPanelProps) {
     handleChange('ignoreList', list);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (localConfig) {
-      onSave(localConfig);
+      setSaving(true);
+      await onSave(localConfig);
       setHasChanges(false);
+      setSaving(false);
     }
   };
 
@@ -49,7 +66,10 @@ export function ConfigPanel({ config, sessionName, onSave }: ConfigPanelProps) {
     <div className="space-y-4">
       {sessionName && (
         <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl p-4">
-          <p className="text-sm text-slate-400">Configuring: <span className="text-white font-medium">{sessionName}</span></p>
+          <p className="text-sm text-slate-400">
+            Configuring: <span className="text-white font-medium">{sessionName}</span>
+            {hasChanges && <span className="text-amber-400 ml-2">(unsaved changes)</span>}
+          </p>
         </div>
       )}
 
@@ -283,10 +303,11 @@ export function ConfigPanel({ config, sessionName, onSave }: ConfigPanelProps) {
       {hasChanges && (
         <button
           onClick={handleSave}
-          className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-xl transition-colors"
+          disabled={saving}
+          className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white font-medium rounded-xl transition-colors"
         >
           <Save className="w-4 h-4" />
-          Save Configuration
+          {saving ? 'Saving...' : 'Save Configuration'}
         </button>
       )}
     </div>
