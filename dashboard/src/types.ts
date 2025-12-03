@@ -9,6 +9,21 @@ export interface SessionConfig {
   skipWeekends: boolean;
 }
 
+export interface DailyData {
+  date: string;
+  received: number;
+  sent: number;
+}
+
+export interface SessionAnalytics {
+  dailyData: DailyData[];
+  totalReceived: number;
+  totalSent: number;
+  avgResponseTime: number;
+  replyRate: number;
+  responseTimes: number[];
+}
+
 export interface SessionStats {
   messagesReceived: number;
   messagesSent: number;
@@ -25,6 +40,7 @@ export interface Session {
   createdAt: string;
   lastUsed: string | null;
   config: SessionConfig;
+  analytics: SessionAnalytics;
   status: 'stopped' | 'starting' | 'running' | 'paused' | 'stopping' | 'error';
   stats: SessionStats | null;
 }
@@ -34,18 +50,9 @@ export interface LoginStatus {
   name: string | null;
 }
 
-export interface DailyData {
-  date: string;
-  received: number;
-  sent: number;
-}
-
-export interface Analytics {
-  dailyData: DailyData[];
+export interface GlobalStats {
+  activeBots: number;
+  totalSessions: number;
   totalReceived: number;
   totalSent: number;
-  avgResponseTime: number;
-  replyRate: number;
-  activeBots: number;
-  responseTimes: number[];
 }

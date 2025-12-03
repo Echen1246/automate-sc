@@ -4,26 +4,29 @@ import express from 'express';
 import cors from 'cors';
 import { resolve } from 'path';
 import { spawn, type ChildProcess } from 'child_process';
-import { writeFileSync, existsSync, mkdirSync, readFileSync } from 'fs';
+import { writeFileSync, existsSync, mkdirSync } from 'fs';
 import { logger } from './utils/logger.js';
 import {
   getSessions,
   getSession,
   getSessionPath,
   getSessionConfig,
+  getSessionAnalytics,
   updateSessionConfig,
+  updateSessionAnalytics,
+  resetSessionAnalytics,
   createSessionId,
   updateSessionMeta,
   deleteSession,
   ensureSessionsDir,
   DEFAULT_CONFIG,
+  DEFAULT_ANALYTICS,
   type SessionConfig,
 } from './sessions.js';
 import { launchForLogin, saveSession, closeBrowser } from './core/browser.js';
 
 const app = express();
 const PORT = 3847;
-const ANALYTICS_PATH = resolve(process.cwd(), 'data', 'analytics.json');
 
 app.use(cors());
 app.use(express.json());
@@ -51,20 +54,6 @@ interface BotProcess {
   stats: BotStats;
 }
 
-interface DailyData {
-  date: string; // YYYY-MM-DD
-  received: number;
-  sent: number;
-}
-
-interface Analytics {
-  dailyData: DailyData[];
-  totalReceived: number;
-  totalSent: number;
-  responseTimes: number[];
-  lastUpdated: string;
-}
-
 // =========================================
 // STATE
 // =========================================
@@ -72,97 +61,6 @@ interface Analytics {
 const activeBots = new Map<string, BotProcess>();
 let loginBrowser: Awaited<ReturnType<typeof launchForLogin>> | null = null;
 let pendingLoginName: string | null = null;
-
-// Analytics (persisted to file)
-let analytics: Analytics = loadAnalytics();
-
-function loadAnalytics(): Analytics {
-  try {
-    if (existsSync(ANALYTICS_PATH)) {
-      const data = JSON.parse(readFileSync(ANALYTICS_PATH, 'utf-8'));
-      // Migrate from hourly to daily if needed
-      if (data.hourlyData && !data.dailyData) {
-        return {
-          dailyData: initDailyData(),
-          totalReceived: data.totalReceived || 0,
-          totalSent: data.totalSent || 0,
-          responseTimes: data.responseTimes || [],
-          lastUpdated: new Date().toISOString(),
-        };
-      }
-      return data;
-    }
-  } catch (e) {
-    logger.warn('Failed to load analytics', { error: e });
-  }
-  return {
-    dailyData: initDailyData(),
-    totalReceived: 0,
-    totalSent: 0,
-    responseTimes: [],
-    lastUpdated: new Date().toISOString(),
-  };
-}
-
-function saveAnalytics(): void {
-  try {
-    const dir = resolve(process.cwd(), 'data');
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(ANALYTICS_PATH, JSON.stringify(analytics, null, 2));
-  } catch (e) {
-    logger.error('Failed to save analytics', { error: e });
-  }
-}
-
-function initDailyData(): DailyData[] {
-  const data: DailyData[] = [];
-  const now = new Date();
-  for (let i = 6; i >= 0; i--) {
-    const date = new Date(now.getTime() - i * 86400000);
-    data.push({
-      date: date.toISOString().split('T')[0],
-      received: 0,
-      sent: 0,
-    });
-  }
-  return data;
-}
-
-function getTodayKey(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
-function updateDailyData(type: 'received' | 'sent'): void {
-  const today = getTodayKey();
-  let dayData = analytics.dailyData.find((d) => d.date === today);
-  
-  if (!dayData) {
-    // Add today, remove oldest if > 7 days
-    dayData = { date: today, received: 0, sent: 0 };
-    analytics.dailyData.push(dayData);
-    if (analytics.dailyData.length > 7) {
-      analytics.dailyData.shift();
-    }
-  }
-  
-  dayData[type]++;
-  
-  if (type === 'received') {
-    analytics.totalReceived++;
-  } else {
-    analytics.totalSent++;
-  }
-  analytics.lastUpdated = new Date().toISOString();
-  saveAnalytics();
-}
-
-function recordResponseTime(ms: number): void {
-  analytics.responseTimes.push(ms);
-  if (analytics.responseTimes.length > 100) {
-    analytics.responseTimes.shift();
-  }
-  saveAnalytics();
-}
 
 // =========================================
 // WORKER MESSAGE HANDLING
@@ -184,13 +82,14 @@ function handleWorkerMessage(sessionId: string, msg: Record<string, unknown>): v
       bot.status = msg.status as BotProcess['status'];
       break;
     case 'message_received':
-      updateDailyData('received');
+      updateSessionAnalytics(sessionId, 'received');
       break;
     case 'message_sent':
-      updateDailyData('sent');
-      if (typeof msg.responseTime === 'number') {
-        recordResponseTime(msg.responseTime);
-      }
+      updateSessionAnalytics(
+        sessionId,
+        'sent',
+        typeof msg.responseTime === 'number' ? msg.responseTime : undefined
+      );
       break;
     case 'error':
       bot.status = 'error';
@@ -274,6 +173,35 @@ app.post('/api/sessions/:id/config', (req, res) => {
   }
   
   res.json({ success: true, config: newConfig });
+});
+
+// Get session analytics
+app.get('/api/sessions/:id/analytics', (req, res) => {
+  const analytics = getSessionAnalytics(req.params.id);
+  if (!analytics) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  
+  const avgResponseTime = analytics.responseTimes.length > 0
+    ? Math.round(analytics.responseTimes.reduce((a, b) => a + b, 0) / analytics.responseTimes.length)
+    : 0;
+
+  const replyRate = analytics.totalReceived > 0
+    ? Math.round((analytics.totalSent / analytics.totalReceived) * 100)
+    : 0;
+
+  res.json({
+    ...analytics,
+    avgResponseTime,
+    replyRate,
+  });
+});
+
+// Reset session analytics
+app.post('/api/sessions/:id/analytics/reset', (req, res) => {
+  resetSessionAnalytics(req.params.id);
+  res.json({ success: true });
 });
 
 app.post('/api/sessions/:id/start', (req, res) => {
@@ -482,6 +410,7 @@ app.post('/api/login/complete', async (_req, res) => {
         lastUsed: null,
       },
       _config: DEFAULT_CONFIG,
+      _analytics: DEFAULT_ANALYTICS,
     };
 
     writeFileSync(sessionPath, JSON.stringify(stateWithMeta, null, 2));
@@ -515,39 +444,25 @@ app.get('/api/login/status', (_req, res) => {
 });
 
 // =========================================
-// ANALYTICS ENDPOINTS
+// GLOBAL STATS (summary across all sessions)
 // =========================================
 
-app.get('/api/analytics', (_req, res) => {
-  const avgResponseTime = analytics.responseTimes.length > 0
-    ? Math.round(analytics.responseTimes.reduce((a, b) => a + b, 0) / analytics.responseTimes.length)
-    : 0;
-
-  const replyRate = analytics.totalReceived > 0
-    ? Math.round((analytics.totalSent / analytics.totalReceived) * 100)
-    : 0;
-
+app.get('/api/stats', (_req, res) => {
+  const sessions = getSessions();
+  let totalReceived = 0;
+  let totalSent = 0;
+  
+  for (const session of sessions) {
+    totalReceived += session.analytics.totalReceived;
+    totalSent += session.analytics.totalSent;
+  }
+  
   res.json({
-    dailyData: analytics.dailyData,
-    totalReceived: analytics.totalReceived,
-    totalSent: analytics.totalSent,
-    avgResponseTime,
-    replyRate,
     activeBots: activeBots.size,
-    responseTimes: analytics.responseTimes.slice(-20),
+    totalSessions: sessions.length,
+    totalReceived,
+    totalSent,
   });
-});
-
-app.post('/api/analytics/reset', (_req, res) => {
-  analytics = {
-    dailyData: initDailyData(),
-    totalReceived: 0,
-    totalSent: 0,
-    responseTimes: [],
-    lastUpdated: new Date().toISOString(),
-  };
-  saveAnalytics();
-  res.json({ success: true });
 });
 
 // =========================================
@@ -588,7 +503,6 @@ process.on('SIGINT', async () => {
     await closeBrowser(loginBrowser);
   }
 
-  saveAnalytics();
   process.exit(0);
 });
 

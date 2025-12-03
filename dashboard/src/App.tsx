@@ -5,54 +5,63 @@ import { KPICards } from './components/KPICards';
 import { TrafficChart, ResponseTimeChart } from './components/Charts';
 import { ConfigPanel } from './components/ConfigPanel';
 import * as api from './api';
-import type { Session, SessionConfig, LoginStatus, Analytics } from './types';
-
-const DEFAULT_ANALYTICS: Analytics = {
-  dailyData: [],
-  totalReceived: 0,
-  totalSent: 0,
-  avgResponseTime: 0,
-  replyRate: 0,
-  activeBots: 0,
-  responseTimes: [],
-};
+import type { Session, SessionConfig, SessionAnalytics, LoginStatus } from './types';
 
 function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [loginStatus, setLoginStatus] = useState<LoginStatus>({ inProgress: false, name: null });
-  const [analytics, setAnalytics] = useState<Analytics>(DEFAULT_ANALYTICS);
+  const [sessionAnalytics, setSessionAnalytics] = useState<SessionAnalytics | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'config'>('overview');
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
 
-  const refresh = async () => {
+  // Fetch sessions and login status
+  const refreshSessions = async () => {
     try {
-      const [sessionsData, loginData, analyticsData] = await Promise.all([
+      const [sessionsData, loginData] = await Promise.all([
         api.getSessions(),
         api.getLoginStatus(),
-        api.getAnalytics(),
       ]);
       setSessions(sessionsData);
       setLoginStatus(loginData);
-      setAnalytics(analyticsData);
       setError(null);
     } catch {
       setError('Failed to connect to server');
     }
   };
 
+  // Fetch analytics for active session
+  const refreshAnalytics = async () => {
+    if (!activeSessionId) {
+      setSessionAnalytics(null);
+      return;
+    }
+    try {
+      const analytics = await api.getSessionAnalytics(activeSessionId);
+      setSessionAnalytics(analytics);
+    } catch {
+      setSessionAnalytics(null);
+    }
+  };
+
   useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 2000);
+    refreshSessions();
+    const interval = setInterval(refreshSessions, 2000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    refreshAnalytics();
+    const interval = setInterval(refreshAnalytics, 2000);
+    return () => clearInterval(interval);
+  }, [activeSessionId]);
 
   const handleNewSession = async (name: string) => {
     try {
       await api.startLogin(name);
-      refresh();
+      refreshSessions();
     } catch {
       setError('Failed to start login');
     }
@@ -62,7 +71,7 @@ function App() {
     try {
       const result = await api.completeLogin();
       setActiveSessionId(result.sessionId);
-      refresh();
+      refreshSessions();
     } catch {
       setError('Failed to save session');
     }
@@ -71,7 +80,7 @@ function App() {
   const handleCancelLogin = async () => {
     try {
       await api.cancelLogin();
-      refresh();
+      refreshSessions();
     } catch {
       setError('Failed to cancel login');
     }
@@ -83,7 +92,7 @@ function App() {
       if (activeSessionId === id) {
         setActiveSessionId(null);
       }
-      refresh();
+      refreshSessions();
     } catch {
       setError('Failed to delete session');
     }
@@ -93,7 +102,7 @@ function App() {
     if (!activeSessionId) return;
     try {
       await api.startSession(activeSessionId);
-      refresh();
+      refreshSessions();
     } catch {
       setError('Failed to start bot');
     }
@@ -103,7 +112,7 @@ function App() {
     if (!activeSessionId) return;
     try {
       await api.pauseSession(activeSessionId);
-      refresh();
+      refreshSessions();
     } catch {
       setError('Failed to pause bot');
     }
@@ -113,7 +122,7 @@ function App() {
     if (!activeSessionId) return;
     try {
       await api.resumeSession(activeSessionId);
-      refresh();
+      refreshSessions();
     } catch {
       setError('Failed to resume bot');
     }
@@ -123,7 +132,7 @@ function App() {
     if (!activeSessionId) return;
     try {
       await api.stopSession(activeSessionId);
-      refresh();
+      refreshSessions();
     } catch {
       setError('Failed to stop bot');
     }
@@ -133,7 +142,7 @@ function App() {
     if (!activeSessionId) return;
     try {
       await api.updateSessionConfig(activeSessionId, updates);
-      refresh();
+      refreshSessions();
     } catch {
       setError('Failed to save configuration');
     }
@@ -189,7 +198,10 @@ function App() {
           {activeTab === 'overview' && (
             <div className="max-w-7xl mx-auto space-y-6">
               {/* KPI Cards */}
-              <KPICards analytics={analytics} />
+              <KPICards
+                analytics={sessionAnalytics}
+                sessionName={activeSession?.name || null}
+              />
 
               {/* Session Control + Charts */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -203,100 +215,12 @@ function App() {
                   />
                 </div>
                 <div className="lg:col-span-2">
-                  <TrafficChart analytics={analytics} />
+                  <TrafficChart analytics={sessionAnalytics} />
                 </div>
               </div>
 
               {/* Response Time Chart */}
-              <ResponseTimeChart analytics={analytics} />
-
-              {/* Session Table */}
-              {sessions.length > 0 && (
-                <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl overflow-hidden">
-                  <div className="px-5 py-4 border-b border-slate-800">
-                    <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
-                      All Sessions
-                    </h3>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-slate-800">
-                          <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 uppercase">
-                            Name
-                          </th>
-                          <th className="px-5 py-3 text-left text-xs font-medium text-slate-500 uppercase">
-                            Status
-                          </th>
-                          <th className="px-5 py-3 text-right text-xs font-medium text-slate-500 uppercase">
-                            Received
-                          </th>
-                          <th className="px-5 py-3 text-right text-xs font-medium text-slate-500 uppercase">
-                            Sent
-                          </th>
-                          <th className="px-5 py-3 text-right text-xs font-medium text-slate-500 uppercase">
-                            Last Active
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sessions.map((session) => (
-                          <tr
-                            key={session.id}
-                            onClick={() => setActiveSessionId(session.id)}
-                            className={`border-b border-slate-800/50 cursor-pointer transition-colors ${
-                              activeSessionId === session.id
-                                ? 'bg-slate-800/50'
-                                : 'hover:bg-slate-800/25'
-                            }`}
-                          >
-                            <td className="px-5 py-3 text-sm text-white font-medium">
-                              {session.name}
-                            </td>
-                            <td className="px-5 py-3">
-                              <span
-                                className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-full ${
-                                  session.status === 'running'
-                                    ? 'bg-emerald-500/20 text-emerald-400'
-                                    : session.status === 'paused'
-                                    ? 'bg-amber-500/20 text-amber-400'
-                                    : session.status === 'error'
-                                    ? 'bg-red-500/20 text-red-400'
-                                    : 'bg-slate-500/20 text-slate-400'
-                                }`}
-                              >
-                                <span
-                                  className={`w-1.5 h-1.5 rounded-full ${
-                                    session.status === 'running'
-                                      ? 'bg-emerald-400'
-                                      : session.status === 'paused'
-                                      ? 'bg-amber-400'
-                                      : session.status === 'error'
-                                      ? 'bg-red-400'
-                                      : 'bg-slate-400'
-                                  }`}
-                                />
-                                {session.status}
-                              </span>
-                            </td>
-                            <td className="px-5 py-3 text-sm text-slate-300 text-right">
-                              {session.stats?.messagesReceived ?? '-'}
-                            </td>
-                            <td className="px-5 py-3 text-sm text-slate-300 text-right">
-                              {session.stats?.messagesSent ?? '-'}
-                            </td>
-                            <td className="px-5 py-3 text-sm text-slate-500 text-right">
-                              {session.stats?.lastActivity
-                                ? new Date(session.stats.lastActivity).toLocaleTimeString()
-                                : '-'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
+              <ResponseTimeChart analytics={sessionAnalytics} />
             </div>
           )}
 

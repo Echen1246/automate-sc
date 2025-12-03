@@ -1,4 +1,4 @@
-// Session management - discovers and manages session files with per-session config
+// Session management - discovers and manages session files with per-session config and analytics
 
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
 import { resolve, basename } from 'path';
@@ -18,6 +18,20 @@ export interface SessionConfig {
   skipWeekends: boolean;
 }
 
+export interface DailyData {
+  date: string;
+  received: number;
+  sent: number;
+}
+
+export interface SessionAnalytics {
+  dailyData: DailyData[];
+  totalReceived: number;
+  totalSent: number;
+  responseTimes: number[];
+  lastUpdated: string;
+}
+
 export interface SessionMeta {
   name: string;
   createdAt: string;
@@ -31,6 +45,7 @@ export interface SessionInfo {
   createdAt: string;
   lastUsed: string | null;
   config: SessionConfig;
+  analytics: SessionAnalytics;
 }
 
 export const DEFAULT_CONFIG: SessionConfig = {
@@ -42,6 +57,28 @@ export const DEFAULT_CONFIG: SessionConfig = {
   scheduleStart: 9,
   scheduleEnd: 23,
   skipWeekends: false,
+};
+
+function initDailyData(): DailyData[] {
+  const data: DailyData[] = [];
+  const now = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date(now.getTime() - i * 86400000);
+    data.push({
+      date: date.toISOString().split('T')[0],
+      received: 0,
+      sent: 0,
+    });
+  }
+  return data;
+}
+
+export const DEFAULT_ANALYTICS: SessionAnalytics = {
+  dailyData: initDailyData(),
+  totalReceived: 0,
+  totalSent: 0,
+  responseTimes: [],
+  lastUpdated: new Date().toISOString(),
 };
 
 // Ensure sessions directory exists
@@ -80,6 +117,12 @@ export function getSessions(): SessionInfo[] {
         ...data._config,
       };
       
+      const analytics: SessionAnalytics = {
+        ...DEFAULT_ANALYTICS,
+        dailyData: initDailyData(), // Always fresh 7-day window
+        ...data._analytics,
+      };
+      
       sessions.push({
         id,
         name: meta.name,
@@ -87,6 +130,7 @@ export function getSessions(): SessionInfo[] {
         createdAt: meta.createdAt,
         lastUsed: meta.lastUsed,
         config,
+        analytics,
       });
     } catch (e) {
       logger.warn('Failed to read session file', { file, error: e });
@@ -167,6 +211,91 @@ export function updateSessionConfig(id: string, updates: Partial<SessionConfig>)
 export function getSessionConfig(id: string): SessionConfig | null {
   const session = getSession(id);
   return session?.config || null;
+}
+
+// Get session analytics
+export function getSessionAnalytics(id: string): SessionAnalytics | null {
+  const session = getSession(id);
+  return session?.analytics || null;
+}
+
+// Update session analytics
+export function updateSessionAnalytics(
+  id: string,
+  type: 'received' | 'sent',
+  responseTime?: number
+): void {
+  const path = getSessionPath(id);
+  if (!existsSync(path)) return;
+  
+  try {
+    const content = readFileSync(path, 'utf-8');
+    const data = JSON.parse(content);
+    
+    // Initialize analytics if missing
+    if (!data._analytics) {
+      data._analytics = { ...DEFAULT_ANALYTICS, dailyData: initDailyData() };
+    }
+    
+    const analytics = data._analytics as SessionAnalytics;
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Find or create today's entry
+    let dayData = analytics.dailyData.find((d) => d.date === today);
+    if (!dayData) {
+      dayData = { date: today, received: 0, sent: 0 };
+      analytics.dailyData.push(dayData);
+      // Keep only last 7 days
+      if (analytics.dailyData.length > 7) {
+        analytics.dailyData.shift();
+      }
+    }
+    
+    // Update counts
+    if (type === 'received') {
+      dayData.received++;
+      analytics.totalReceived++;
+    } else {
+      dayData.sent++;
+      analytics.totalSent++;
+    }
+    
+    // Record response time
+    if (responseTime !== undefined) {
+      analytics.responseTimes.push(responseTime);
+      if (analytics.responseTimes.length > 100) {
+        analytics.responseTimes.shift();
+      }
+    }
+    
+    analytics.lastUpdated = new Date().toISOString();
+    data._analytics = analytics;
+    
+    writeFileSync(path, JSON.stringify(data, null, 2));
+  } catch (e) {
+    logger.error('Failed to update session analytics', { id, error: e });
+  }
+}
+
+// Reset session analytics
+export function resetSessionAnalytics(id: string): void {
+  const path = getSessionPath(id);
+  if (!existsSync(path)) return;
+  
+  try {
+    const content = readFileSync(path, 'utf-8');
+    const data = JSON.parse(content);
+    
+    data._analytics = {
+      ...DEFAULT_ANALYTICS,
+      dailyData: initDailyData(),
+    };
+    
+    writeFileSync(path, JSON.stringify(data, null, 2));
+    logger.info('Session analytics reset', { id });
+  } catch (e) {
+    logger.error('Failed to reset session analytics', { id, error: e });
+  }
 }
 
 // Create new session ID from name

@@ -10,10 +10,10 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import type { Analytics } from '../types';
+import type { SessionAnalytics } from '../types';
 
 interface ChartsProps {
-  analytics: Analytics;
+  analytics: SessionAnalytics | null;
 }
 
 function formatDate(dateStr: string): string {
@@ -23,6 +23,14 @@ function formatDate(dateStr: string): string {
 }
 
 export function TrafficChart({ analytics }: ChartsProps) {
+  if (!analytics) {
+    return (
+      <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl p-5 h-80 flex items-center justify-center">
+        <p className="text-slate-500">Select a session to view traffic</p>
+      </div>
+    );
+  }
+
   const data = analytics.dailyData.map((d) => ({
     ...d,
     day: formatDate(d.date),
@@ -81,6 +89,14 @@ export function TrafficChart({ analytics }: ChartsProps) {
 }
 
 export function ResponseTimeChart({ analytics }: ChartsProps) {
+  if (!analytics) {
+    return (
+      <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl p-5 h-80 flex items-center justify-center">
+        <p className="text-slate-500">Select a session to view response times</p>
+      </div>
+    );
+  }
+
   const data = analytics.responseTimes.map((time, i) => ({
     index: i + 1,
     time: Math.round(time / 1000),
