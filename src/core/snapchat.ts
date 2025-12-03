@@ -28,6 +28,7 @@ export interface Conversation {
   preview: string;
   hasUnread: boolean;
   isNewChat: boolean;
+  isNewSnap: boolean;
 }
 
 export interface Message {
@@ -88,6 +89,7 @@ export async function getConversations(page: Page): Promise<Conversation[]> {
           preview,
           hasUnread: false,
           isNewChat: false,
+          isNewSnap: false,
         });
         continue;
       }
@@ -138,8 +140,9 @@ export async function getConversations(page: Page): Promise<Conversation[]> {
       conversations.push({
         name,
         preview,
-        hasUnread: hasUnread || isNewChat,
+        hasUnread: hasUnread || isNewChat || hasNewSnap,
         isNewChat,
+        isNewSnap: hasNewSnap,
       });
     }
 

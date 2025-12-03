@@ -27,6 +27,9 @@ export interface SessionConfig {
   
   // Filters
   ignoreList: string[];
+  
+  // Snap response (when someone sends a photo/video)
+  snapResponse: string;
 }
 
 export interface DailyData {
@@ -79,6 +82,9 @@ export const DEFAULT_CONFIG: SessionConfig = {
   
   // Filters
   ignoreList: ['My AI', 'Team Snapchat'],
+  
+  // Snap response
+  snapResponse: "i dont send pics here but you can see more on my twitter @yourhandle",
 };
 
 function initDailyData(): DailyData[] {

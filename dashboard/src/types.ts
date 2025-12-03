@@ -18,6 +18,9 @@ export interface SessionConfig {
   
   // Filters
   ignoreList: string[];
+  
+  // Snap response
+  snapResponse: string;
 }
 
 export interface DailyData {

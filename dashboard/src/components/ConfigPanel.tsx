@@ -299,6 +299,29 @@ export function ConfigPanel({ config, sessionId, sessionName, onSave }: ConfigPa
         </div>
       </div>
 
+      {/* Snap Response */}
+      <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Brain className="w-4 h-4 text-slate-500" />
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+            Snap Response
+          </h3>
+        </div>
+
+        <div>
+          <label className="text-xs text-slate-500 block mb-2">
+            Auto-reply when someone sends a photo/video (leave empty to skip)
+          </label>
+          <input
+            type="text"
+            value={localConfig.snapResponse}
+            onChange={(e) => handleChange('snapResponse', e.target.value)}
+            placeholder="i dont send pics here but you can see more on my twitter @yourhandle"
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+          />
+        </div>
+      </div>
+
       {/* Save Button */}
       {hasChanges && (
         <button

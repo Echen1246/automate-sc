@@ -55,6 +55,9 @@ const runtimeConfig = {
   
   // Filters
   ignoreList: ['My AI', 'Team Snapchat'],
+  
+  // Snap response
+  snapResponse: '',
 };
 
 // Worker state
@@ -182,6 +185,11 @@ process.on('message', (msg: { type: string; config?: Record<string, unknown> }) 
       runtimeConfig.ignoreList = cfg.ignoreList as string[];
     }
     
+    // Update snap response
+    if (typeof cfg.snapResponse === 'string') {
+      runtimeConfig.snapResponse = cfg.snapResponse;
+    }
+    
     logger.info('Config updated');
     report('config_updated');
   }
@@ -210,6 +218,39 @@ async function handleConversation(
 
   const messages = await getMessages(page);
   logger.info('Messages retrieved', { count: messages.length });
+
+  // Handle snaps (photo/video) - no text to read
+  if (conversation.isNewSnap && runtimeConfig.snapResponse) {
+    const receivedMessages = messages.filter((m) => !m.isSent);
+    const lastReceived = receivedMessages[receivedMessages.length - 1];
+    
+    // If no new text message, they just sent a snap
+    if (!lastReceived || messages.length === 0) {
+      logger.info('New snap detected, sending snap response');
+      
+      if (!canReply()) {
+        logger.info('Rate limit reached, skipping snap reply');
+        await exitConversation(page);
+        return;
+      }
+      
+      const delay = randomDelay(runtimeConfig.responseDelayMin, runtimeConfig.responseDelayMax);
+      await sleepRandom(delay, delay);
+      
+      const sent = await sendMessage(page, runtimeConfig.snapResponse);
+      if (sent) {
+        stats.messagesSent++;
+        stats.conversationsHandled++;
+        stats.lastActivity = new Date().toISOString();
+        repliesThisHour++;
+        report('message_sent', { to: conversation.name, type: 'snap_response' });
+        logger.info('Snap response sent');
+      }
+      
+      await exitConversation(page);
+      return;
+    }
+  }
 
   if (messages.length === 0) {
     await exitConversation(page);
