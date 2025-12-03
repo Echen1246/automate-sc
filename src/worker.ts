@@ -310,12 +310,27 @@ async function main(): Promise<void> {
   logger.info('Worker running');
 
   // Handle shutdown
+  let isShuttingDown = false;
   const shutdown = async (): Promise<void> => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    
     logger.info('Worker shutting down');
     isRunning = false;
     report('status', { status: 'stopped' });
-    await saveSession(instance.context, sessionPath);
-    await closeBrowser(instance);
+    
+    try {
+      await saveSession(instance.context, sessionPath);
+    } catch (e) {
+      logger.debug('Could not save session on shutdown (browser may be closed)');
+    }
+    
+    try {
+      await closeBrowser(instance);
+    } catch (e) {
+      logger.debug('Could not close browser (may already be closed)');
+    }
+    
     process.exit(0);
   };
 

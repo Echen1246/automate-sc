@@ -339,10 +339,46 @@ export async function exitConversation(page: Page): Promise<void> {
   logger.debug('Exited conversation');
 }
 
+// UI elements and system items to always ignore
+const UI_ELEMENTS = [
+  'try the new snapchat',
+  'try out lenses',
+  'watch snapchat stories',
+  'watch snapchat spotlight',
+  'snapchat+',
+  'stories',
+  'spotlight',
+  'lenses',
+  'filters',
+  'chat',
+  'camera',
+  'map',
+  'discover',
+  'search',
+  'settings',
+  'profile',
+  'add friends',
+  'my story',
+];
+
 export function filterConversations(conversations: Conversation[]): Conversation[] {
   return conversations.filter((c) => {
+    const nameLower = c.name.toLowerCase();
+    
+    // Filter out UI elements
+    const isUIElement = UI_ELEMENTS.some((ui) => nameLower.includes(ui));
+    if (isUIElement) {
+      return false;
+    }
+    
+    // Filter out very short names (likely UI elements)
+    if (c.name.length < 3) {
+      return false;
+    }
+    
+    // Filter based on user's ignore list
     const isIgnored = config.ignoreList.some((ignore) =>
-      c.name.toLowerCase().includes(ignore.toLowerCase())
+      nameLower.includes(ignore.toLowerCase())
     );
     if (isIgnored) {
       logger.debug('Ignoring conversation', { name: c.name });

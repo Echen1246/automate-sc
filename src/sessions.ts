@@ -112,6 +112,13 @@ export function getSessions(): SessionInfo[] {
         lastUsed: null,
       };
       
+      // Skip if name is missing
+      const name = meta.name || id;
+      if (!name) {
+        logger.warn('Skipping session with no name', { file });
+        continue;
+      }
+      
       const config: SessionConfig = {
         ...DEFAULT_CONFIG,
         ...data._config,
@@ -119,16 +126,16 @@ export function getSessions(): SessionInfo[] {
       
       const analytics: SessionAnalytics = {
         ...DEFAULT_ANALYTICS,
-        dailyData: initDailyData(), // Always fresh 7-day window
+        dailyData: initDailyData(),
         ...data._analytics,
       };
       
       sessions.push({
         id,
-        name: meta.name,
+        name,
         path,
-        createdAt: meta.createdAt,
-        lastUsed: meta.lastUsed,
+        createdAt: meta.createdAt || new Date().toISOString(),
+        lastUsed: meta.lastUsed || null,
         config,
         analytics,
       });
@@ -137,7 +144,7 @@ export function getSessions(): SessionInfo[] {
     }
   }
   
-  return sessions.sort((a, b) => a.name.localeCompare(b.name));
+  return sessions.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 }
 
 // Get session by ID
